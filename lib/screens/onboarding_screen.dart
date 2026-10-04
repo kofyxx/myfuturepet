@@ -18,24 +18,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   final List<Map<String, String>> pages = [
     {
-      'image': 'assets/images/onboarding_pet.png',
+      'image': 'assets/images/pic1.png',
       'title': 'Find Your Perfect Match',
       'description':
           'Discover pets looking for a loving home. Browse profiles, learn their stories, and find your new best friend.',
     },
 
     {
-      'image': 'assets/images/onboarding_pet.png',
-      'title': 'Meet Your Future Friend',
+      'image': 'assets/images/pic2.png',
+      'title': 'Visualize Your New Friend',
       'description':
-          'Explore rescued pets and discover the companion that matches your lifestyle.',
+          'Use our Augmented Reality feature to see how your future pet fits into your home and lifestyle.',
     },
 
     {
-      'image': 'assets/images/onboarding_pet.png',
-      'title': 'Start Your Adoption Journey',
+      'image': 'assets/images/pic3.png',
+      'title': 'Bring Happiness Home',
       'description':
-          'Take the next step and give a rescued pet the loving home they deserve.',
+          'Start your journey today and find the perfect companion for you. Your new best friend is waiting.',
     },
   ];
 
@@ -97,6 +97,39 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             height: 360,
                             width: double.infinity,
                             fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                height: 360,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(32),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      index == 0
+                                          ? Icons.pets_rounded
+                                          : index == 1
+                                              ? Icons.view_in_ar_rounded
+                                              : Icons.favorite_rounded,
+                                      size: 72,
+                                      color: const Color(0xFFA94327),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      page['title']!,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
                           ),
                         ),
 
