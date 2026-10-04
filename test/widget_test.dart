@@ -1,30 +1,19 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:myfuturepet/main.dart';
+import 'package:myfuturepet/pet_data.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
-
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  test('PetData notifier initializes and updates correctly', () {
+    expect(PetData.pets, isEmpty);
+    PetData.petsNotifier.value = [
+      {
+        'id': 'test-1',
+        'name': 'Sky',
+        'type': 'dog',
+        'breed': 'Labrador mix',
+        'status': 'available',
+      }
+    ];
+    expect(PetData.pets.length, equals(1));
+    expect(PetData.pets.first['name'], equals('Sky'));
   });
 }
