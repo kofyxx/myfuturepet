@@ -411,17 +411,16 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
       child: Row(
         children: [
           Container(
-            width: 34,
-            height: 34,
-
-            decoration: const BoxDecoration(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
-
-              image: DecorationImage(
-                image: NetworkImage(
-                  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300',
-                ),
-
+              border: Border.all(
+                color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8EA),
+                width: 1,
+              ),
+              image: const DecorationImage(
+                image: AssetImage('assets/images/app_launcher_icon.png'),
                 fit: BoxFit.cover,
               ),
             ),
@@ -432,7 +431,6 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
           const Expanded(
             child: Text(
               'My Future Pet',
-
               style: TextStyle(
                 color: primaryColor,
                 fontSize: 19,
@@ -458,13 +456,14 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
                     },
                     icon: Icon(
                       Icons.notifications_none_rounded,
-                      color: isDark ? const Color(0xFFF8FAFC) : darkText,
+                      size: 24,
+                      color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF062B35),
                     ),
                   ),
                   if (unreadCount > 0)
                     Positioned(
-                      top: 8,
-                      right: 8,
+                      top: 6,
+                      right: 6,
                       child: Container(
                         padding: const EdgeInsets.all(4),
                         decoration: const BoxDecoration(
@@ -934,6 +933,7 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
   ) {
     final mood = _getPetMoodBadge(pet, index);
     final isFemale = _isFemale(pet);
+    final isDark = ThemeService.isDarkMode(context);
 
     return GestureDetector(
       onTap: () {
@@ -947,11 +947,11 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
       child: Container(
         width: 182,
         decoration: BoxDecoration(
-          color: Colors.black,
+          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
+              color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.08),
               blurRadius: 8,
               offset: const Offset(0, 3),
             ),
@@ -965,12 +965,35 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
               child: Image.network(
                 pet['image'].toString(),
                 fit: BoxFit.cover,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(
+                    color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+                    child: Center(
+                      child: SizedBox(
+                        width: 26,
+                        height: 26,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                              : null,
+                          color: primaryColor,
+                        ),
+                      ),
+                    ),
+                  );
+                },
                 errorBuilder: (context, error, stackTrace) {
-                  return const Center(
-                    child: Icon(
-                      Icons.pets,
-                      color: Colors.white,
-                      size: 45,
+                  return Container(
+                    color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+                    child: const Center(
+                      child: Icon(
+                        Icons.pets,
+                        color: primaryColor,
+                        size: 45,
+                      ),
                     ),
                   );
                 },
@@ -1260,6 +1283,26 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
                   Image.network(
                     pet['image'].toString(),
                     fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Container(
+                        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+                        child: Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
+                              color: primaryColor,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                     errorBuilder: (context, error, stackTrace) {
                       return Container(
                         color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),

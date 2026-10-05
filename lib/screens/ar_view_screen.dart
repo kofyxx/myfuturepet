@@ -63,7 +63,7 @@ class _ARViewScreenState extends State<ARViewScreen>
   StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
   StreamSubscription<GyroscopeEvent>? _gyroscopeSubscription;
   bool _surfaceDetected = true;
-  String _surfaceStatus = 'Floor Surface Detected (Dining / Kitchen Floor)';
+  String _surfaceStatus = 'Floor Surface Detected 🐾';
   bool _isGroundAnchored = true;
   Offset _gyroParallax = Offset.zero;
 
@@ -355,18 +355,30 @@ class _ARViewScreenState extends State<ARViewScreen>
                     child: _buildCameraOrFallback(size),
                   ),
 
-                  // 1.5 AR Surface Detection Grid (Perspective Floor Plane)
-                  if (_surfaceDetected)
+                  // 1.5 Floor Placement Guide Reticle (only when placing)
+                  if (!_isPetPlaced)
                     Positioned(
-                      top: size.height * 0.40,
+                      bottom: size.height * 0.35,
                       left: 0,
                       right: 0,
-                      bottom: 0,
-                      child: IgnorePointer(
-                        child: CustomPaint(
-                          painter: _ARSurfacePlanePainter(
-                            isAnchored: _isGroundAnchored,
-                            parallaxOffset: _gyroParallax,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFF00E5D0), width: 1.2),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.touch_app_rounded, color: Color(0xFF00E5D0), size: 16),
+                              SizedBox(width: 8),
+                              Text(
+                                'Aim at floor & tap shutter to place pet',
+                                style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -502,46 +514,6 @@ class _ARViewScreenState extends State<ARViewScreen>
               painter: _FloorPerspectivePainter(),
             ),
           ),
-
-          // Top Badge Notice for Defense: Failsafe Active
-          Positioned(
-            top: 75,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.65),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: const Color(0xFF078F80).withValues(alpha: 0.8),
-                    width: 1.2,
-                  ),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.view_in_ar_rounded,
-                      color: Color(0xFF4EE2D1),
-                      size: 16,
-                    ),
-                    SizedBox(width: 8),
-                    Text(
-                      'AR Simulation Mode (Camera / ARCore Fallback)',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -553,22 +525,29 @@ class _ARViewScreenState extends State<ARViewScreen>
 
   Widget _buildInteractiveSpatialCanvas(Size size) {
     if (!_isPetPlaced) {
-      // Reticle targeting guide
+      // Reticle targeting guide centered on screen
       return Center(
         child: Container(
-          width: 110,
-          height: 110,
+          width: 120,
+          height: 120,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.85),
+              color: const Color(0xFF00E5D0).withValues(alpha: 0.85),
               width: 2.5,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF00E5D0).withValues(alpha: 0.3),
+                blurRadius: 16,
+                spreadRadius: 2,
+              ),
+            ],
           ),
           child: Center(
             child: Container(
-              width: 14,
-              height: 14,
+              width: 16,
+              height: 16,
               decoration: const BoxDecoration(
                 color: Color(0xFFFFA65C),
                 shape: BoxShape.circle,
@@ -579,15 +558,25 @@ class _ARViewScreenState extends State<ARViewScreen>
       );
     }
 
+    final cardW = 180.0 * _scale;
+    final cardH = 220.0 * _scale;
+
     // Position calculations with ground parallax anchoring
     final effectiveX = (_petPosition.dx + (_isGroundAnchored ? _gyroParallax.dx : 0.0)).clamp(0.05, 0.95);
     final effectiveY = (_petPosition.dy + (_isGroundAnchored ? _gyroParallax.dy : 0.0)).clamp(0.15, 0.90);
-    final petX = (effectiveX * size.width) - (110 * _scale);
-    final petY = (effectiveY * size.height) - (130 * _scale);
+
+    // Mathematically centered horizontally on screen
+    final petX = (effectiveX * size.width) - (cardW / 2);
+    final petY = (effectiveY * size.height) - (cardH / 2);
+
+    final maxLeft = math.max(0.0, size.width - cardW);
+    final leftPos = petX.clamp(0.0, maxLeft).toDouble();
+    final maxTop = math.max(60.0, size.height - cardH - 120.0);
+    final topPos = petY.clamp(60.0, math.max(60.0, maxTop)).toDouble();
 
     return Positioned(
-      left: petX.clamp(10.0, size.width - (220 * _scale) - 10.0),
-      top: petY.clamp(80.0, size.height - (260 * _scale) - 10.0),
+      left: leftPos,
+      top: topPos,
       child: GestureDetector(
         onScaleStart: (details) {
           _baseScale = _scale;
@@ -1408,59 +1397,4 @@ class _FloorPerspectivePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-// ============================================================
-// AR SURFACE PLANE PAINTER (FLOOR GRID & PERSPECTIVE ANCHOR)
-// ============================================================
-
-class _ARSurfacePlanePainter extends CustomPainter {
-  final bool isAnchored;
-  final Offset parallaxOffset;
-
-  _ARSurfacePlanePainter({
-    required this.isAnchored,
-    this.parallaxOffset = Offset.zero,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final dotPaint = Paint()
-      ..color = const Color(0xFF00E5D0).withValues(alpha: isAnchored ? 0.35 : 0.6)
-      ..style = PaintingStyle.fill;
-
-    final linePaint = Paint()
-      ..color = const Color(0xFF00E5D0).withValues(alpha: isAnchored ? 0.15 : 0.25)
-      ..strokeWidth = 1.0;
-
-    final vanishingX = size.width * 0.5 + (parallaxOffset.dx * size.width * 0.5);
-    final vanishingY = -size.height * 0.2;
-
-    // Perspective plane grid
-    for (double x = -size.width * 0.2; x <= size.width * 1.2; x += size.width * 0.12) {
-      canvas.drawLine(
-        Offset(vanishingX, vanishingY),
-        Offset(x + parallaxOffset.dx * 60, size.height),
-        linePaint,
-      );
-    }
-
-    // Concentric perspective horizontal depth rings
-    for (double i = 0.25; i <= 0.95; i += 0.14) {
-      final y = size.height * math.pow(i, 1.6);
-      canvas.drawLine(
-        Offset(0, y + parallaxOffset.dy * 30),
-        Offset(size.width, y + parallaxOffset.dy * 30),
-        linePaint,
-      );
-      // Draw surface tracking dots
-      for (double dx = size.width * 0.1; dx < size.width * 0.95; dx += size.width * 0.14) {
-        canvas.drawCircle(Offset(dx, y + parallaxOffset.dy * 30), 2.2, dotPaint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _ARSurfacePlanePainter oldDelegate) =>
-      oldDelegate.isAnchored != isAnchored || oldDelegate.parallaxOffset != parallaxOffset;
 }

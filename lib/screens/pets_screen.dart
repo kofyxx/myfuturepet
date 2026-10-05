@@ -257,26 +257,24 @@ void dispose() {
       ),
       child: Row(
         children: [
-          // PROFILE
+          // APP LOGO
           Container(
-            width: 34,
-            height: 34,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: isDark ? const Color(0xFF334155) : const Color(0xFFD9E1E4),
+                color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8EA),
                 width: 1,
               ),
               image: const DecorationImage(
-                image: NetworkImage(
-                  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300',
-                ),
+                image: AssetImage('assets/images/app_launcher_icon.png'),
                 fit: BoxFit.cover,
               ),
             ),
           ),
 
-          const SizedBox(width: 10),
+          const SizedBox(width: 9),
 
           // APP NAME
           const Expanded(
@@ -297,9 +295,8 @@ void dispose() {
               return Stack(
                 alignment: Alignment.center,
                 children: [
-                  _buildHeaderButton(
-                    icon: Icons.notifications_none_rounded,
-                    onTap: () {
+                  IconButton(
+                    onPressed: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -307,11 +304,16 @@ void dispose() {
                         ),
                       );
                     },
+                    icon: Icon(
+                      Icons.notifications_none_rounded,
+                      size: 24,
+                      color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF062B35),
+                    ),
                   ),
                   if (unreadCount > 0)
                     Positioned(
-                      top: 4,
-                      right: 4,
+                      top: 6,
+                      right: 6,
                       child: Container(
                         padding: const EdgeInsets.all(4),
                         decoration: const BoxDecoration(
@@ -342,33 +344,6 @@ void dispose() {
     );
   }
 
-  // ============================================================
-  // HEADER BUTTON
-  // ============================================================
-
-  Widget _buildHeaderButton({
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    final isDark = ThemeService.isDarkMode(context);
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(50),
-        child: SizedBox(
-          width: 40,
-          height: 40,
-          child: Icon(
-            icon,
-            color: isDark ? const Color(0xFFF8FAFC) : darkText,
-            size: 22,
-          ),
-        ),
-      ),
-    );
-  }
 
   // ============================================================
   // SEARCH BAR
@@ -933,6 +908,25 @@ void dispose() {
                     fit: BoxFit.cover,
                     alignment:
                         Alignment.center,
+                    loadingBuilder:
+                        (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Container(
+                        color: isDark
+                            ? const Color(0xFF1E293B)
+                            : const Color(0xFFE9EEF0),
+                        child: const Center(
+                          child: SizedBox(
+                            width: 26,
+                            height: 26,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              color: primaryColor,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                     errorBuilder:
                         (context, error, stackTrace) {
                       return Container(

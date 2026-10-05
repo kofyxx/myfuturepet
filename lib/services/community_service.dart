@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -48,7 +49,7 @@ class CommunityService {
 
       var query = _client
           .from('community_posts')
-          .select('*, author:author_id(id, full_name, email), shelter:shelter_id(id, name, logo_url), pet:pet_id(id, name, type, breed, image_url)');
+          .select('*, author:author_id(id, full_name, email, avatar_url), shelter:shelter_id(id, name, logo_url), pet:pet_id(id, name, type, breed, image_url), post_comments(count)');
 
       if (category != null && category != 'All' && category.isNotEmpty) {
         query = query.eq('category', category);
@@ -83,12 +84,17 @@ class CommunityService {
         final postId = map['id']?.toString() ?? '';
         map['is_liked_by_me'] = userLikedPostIds.contains(postId);
 
-        // Apply local comments count if available
-        if (_localCommentCounts.containsKey(postId)) {
-          map['comment_count'] = _localCommentCounts[postId];
-        } else if (map['comment_count'] == null) {
-          map['comment_count'] = 0;
+        // Extract live count from Supabase post_comments relation or local cache
+        final postCommentsRelation = map['post_comments'] as List<dynamic>?;
+        int remoteCount = 0;
+        if (postCommentsRelation != null && postCommentsRelation.isNotEmpty) {
+          remoteCount = (postCommentsRelation[0]['count'] as num?)?.toInt() ?? 0;
+        } else {
+          remoteCount = (map['comment_count'] as num?)?.toInt() ?? 0;
         }
+
+        final localCount = _localCommentCounts[postId] ?? 0;
+        map['comment_count'] = math.max(remoteCount, localCount);
 
         return map;
       }).toList();
@@ -150,7 +156,7 @@ class CommunityService {
     try {
       final response = await _client
           .from('post_comments')
-          .select('*, author:user_id(id, full_name, email)')
+          .select('*, author:user_id(id, full_name, email, avatar_url)')
           .eq('post_id', postId)
           .order('created_at', ascending: true);
 

@@ -1,4 +1,6 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'my_applications_screen.dart';
@@ -73,6 +75,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     FavoritesService().init().then((_) {
       SavedPetStore.syncWithFavorites(PetData.pets);
+      if (mounted) setState(() {});
+    });
+
+    AdoptionApplicationStore.syncWithSupabase().then((_) {
+      if (mounted) setState(() {});
+    });
+
+    AppointmentStore.syncWithSupabase().then((_) {
       if (mounted) setState(() {});
     });
 
@@ -170,6 +180,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _loadUserProfile(),
       FavoritesService().init(),
       NotificationService().refreshUnreadCount(),
+      AdoptionApplicationStore.syncWithSupabase(),
+      AppointmentStore.syncWithSupabase(),
     ]);
     SavedPetStore.syncWithFavorites(PetData.pets);
     if (mounted) setState(() {});
@@ -870,87 +882,270 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final nameController = TextEditingController(text: userName);
     final roleController = TextEditingController(text: userRole);
 
+    XFile? pickedPhoto;
+    Uint8List? pickedPhotoBytes;
+    bool isSaving = false;
+
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: dialogBg,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          title: Text(
-            'Edit Profile',
-            style: TextStyle(
-              color: dialogText,
-              fontSize: 19,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                style: TextStyle(color: dialogText, fontSize: 14),
-                decoration: InputDecoration(
-                  labelText: 'Name',
-                  labelStyle: TextStyle(fontSize: 13, color: dialogSubText),
-                  filled: true,
-                  fillColor: dialogInputBg,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide.none,
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              backgroundColor: dialogBg,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              title: Text(
+                'Edit Profile',
+                style: TextStyle(
+                  color: dialogText,
+                  fontSize: 19,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Profile Photo Avatar with Edit Badge
+                    GestureDetector(
+                      onTap: isSaving
+                          ? null
+                          : () async {
+                              final picker = ImagePicker();
+                              final picked = await picker.pickImage(
+                                source: ImageSource.gallery,
+                                maxWidth: 800,
+                                maxHeight: 800,
+                                imageQuality: 85,
+                              );
+                              if (picked != null) {
+                                final bytes = await picked.readAsBytes();
+                                setModalState(() {
+                                  pickedPhoto = picked;
+                                  pickedPhotoBytes = bytes;
+                                });
+                              }
+                            },
+                      child: Stack(
+                        alignment: Alignment.bottomRight,
+                        children: [
+                          Container(
+                            width: 76,
+                            height: 76,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: primaryColor,
+                                width: 2,
+                              ),
+                            ),
+                            child: ClipOval(
+                              child: pickedPhotoBytes != null
+                                  ? Image.memory(
+                                      pickedPhotoBytes!,
+                                      fit: BoxFit.cover,
+                                    )
+                                  : (profileImage.isNotEmpty)
+                                      ? Image.network(
+                                          profileImage,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => Container(
+                                            color: isDark ? const Color(0xFF0F172A) : lightBlue,
+                                            alignment: Alignment.center,
+                                            child: Text(
+                                              userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
+                                              style: TextStyle(
+                                                fontSize: 28,
+                                                fontWeight: FontWeight.bold,
+                                                color: primaryColor,
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      : Container(
+                                          color: isDark ? const Color(0xFF0F172A) : lightBlue,
+                                          alignment: Alignment.center,
+                                          child: Text(
+                                            userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
+                                            style: TextStyle(
+                                              fontSize: 28,
+                                              fontWeight: FontWeight.bold,
+                                              color: primaryColor,
+                                            ),
+                                          ),
+                                        ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.all(5),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFA94327),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.camera_alt,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Tap to change photo',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: dialogSubText,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: nameController,
+                      enabled: !isSaving,
+                      style: TextStyle(color: dialogText, fontSize: 14),
+                      decoration: InputDecoration(
+                        labelText: 'Name',
+                        labelStyle: TextStyle(fontSize: 13, color: dialogSubText),
+                        filled: true,
+                        fillColor: dialogInputBg,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 11),
+                    TextField(
+                      controller: roleController,
+                      enabled: !isSaving,
+                      style: TextStyle(color: dialogText, fontSize: 14),
+                      decoration: InputDecoration(
+                        labelText: 'Profile',
+                        labelStyle: TextStyle(fontSize: 13, color: dialogSubText),
+                        filled: true,
+                        fillColor: dialogInputBg,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(color: dialogSubText, fontSize: 13),
                   ),
                 ),
-              ),
-              const SizedBox(height: 11),
-              TextField(
-                controller: roleController,
-                style: TextStyle(color: dialogText, fontSize: 14),
-                decoration: InputDecoration(
-                  labelText: 'Profile',
-                  labelStyle: TextStyle(fontSize: 13, color: dialogSubText),
-                  filled: true,
-                  fillColor: dialogInputBg,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide.none,
+                ElevatedButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          setModalState(() => isSaving = true);
+                          try {
+                            String newAvatarUrl = profileImage;
+                            final currentUser = supabase.auth.currentUser;
+
+                            // 1. Upload photo if selected
+                            if (currentUser != null && pickedPhoto != null && pickedPhotoBytes != null) {
+                              final fileName =
+                                  'avatar_${currentUser.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+                              final storagePath = 'avatars/$fileName';
+                              await supabase.storage.from('pet-photos').uploadBinary(
+                                    storagePath,
+                                    pickedPhotoBytes!,
+                                    fileOptions: const FileOptions(
+                                      contentType: 'image/jpeg',
+                                      upsert: true,
+                                    ),
+                                  );
+                              newAvatarUrl =
+                                  supabase.storage.from('pet-photos').getPublicUrl(storagePath);
+                            }
+
+                            final updatedName = nameController.text.trim().isNotEmpty
+                                ? nameController.text.trim()
+                                : userName;
+                            final updatedRole = roleController.text.trim().isNotEmpty
+                                ? roleController.text.trim()
+                                : userRole;
+
+                            // 2. Persist to profiles database and auth
+                            if (currentUser != null) {
+                              final Map<String, dynamic> updates = {
+                                'full_name': updatedName,
+                                'role': updatedRole,
+                              };
+                              if (newAvatarUrl.isNotEmpty) {
+                                updates['avatar_url'] = newAvatarUrl;
+                              }
+                              await supabase
+                                  .from('profiles')
+                                  .update(updates)
+                                  .eq('id', currentUser.id);
+                              await supabase.auth.updateUser(UserAttributes(data: updates));
+                            }
+
+                            if (!mounted) return;
+                            setState(() {
+                              userName = updatedName;
+                              userRole = updatedRole;
+                              profileImage = newAvatarUrl;
+                            });
+                            if (dialogContext.mounted) {
+                              Navigator.pop(dialogContext);
+                            }
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Profile updated successfully! 🐾'),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          } catch (e) {
+                            if (dialogContext.mounted) {
+                              setModalState(() => isSaving = false);
+                            }
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text('Failed to update profile: $e'),
+                                backgroundColor: Colors.red.shade700,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
                   ),
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text('Save', style: TextStyle(fontSize: 13)),
                 ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(
-                'Cancel',
-                style: TextStyle(color: dialogSubText, fontSize: 13),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  if (nameController.text.trim().isNotEmpty) {
-                    userName = nameController.text.trim();
-                  }
-                  if (roleController.text.trim().isNotEmpty) {
-                    userRole = roleController.text.trim();
-                  }
-                });
-                Navigator.pop(dialogContext);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryColor,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-              ),
-              child: const Text('Save', style: TextStyle(fontSize: 13)),
-            ),
-          ],
+              ],
+            );
+          },
         );
       },
     );
