@@ -115,6 +115,15 @@ void dispose() {
   super.dispose();
 }
 
+  Future<void> _refreshPets() async {
+    await Future.wait([
+      PetData.syncWithSupabase(),
+      FavoritesService().init(),
+    ]);
+    SavedPetStore.syncWithFavorites(PetData.pets);
+    if (mounted) setState(() {});
+  }
+
   // ============================================================
   // BUILD
   // ============================================================
@@ -135,15 +144,20 @@ void dispose() {
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    physics:
-                        const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(
-                      16,
-                      14,
-                      16,
-                      28,
-                    ),
+                  return RefreshIndicator(
+                    color: primaryColor,
+                    backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                    onRefresh: _refreshPets,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      padding: const EdgeInsets.fromLTRB(
+                        16,
+                        14,
+                        16,
+                        28,
+                      ),
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
                         minHeight: constraints.maxHeight,
@@ -176,9 +190,10 @@ void dispose() {
                         ],
                       ),
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              },
+            ),
             ),
           ],
         ),

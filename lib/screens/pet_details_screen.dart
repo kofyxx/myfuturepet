@@ -529,15 +529,19 @@ class _PetDetailsScreenState extends State<PetDetailsScreen> {
                             ),
                           ),
                           const SizedBox(width: 10),
-                          Text(
-                            'Health & Medical Status',
-                            style: TextStyle(
-                              color: isDark ? const Color(0xFFF8FAFC) : darkText,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                          Expanded(
+                            child: Text(
+                              'Health & Medical Status',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: isDark ? const Color(0xFFF8FAFC) : darkText,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
-                          const Spacer(),
+                          const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,

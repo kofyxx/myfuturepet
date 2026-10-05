@@ -99,7 +99,13 @@ class _HomeScreenState extends State<HomeScreen> {
               autoFocusSearch: _openSearch,
             ),
 
-            const ARViewScreen(),
+            ARViewScreen(
+              onBack: () {
+                setState(() {
+                  _selectedIndex = 0;
+                });
+              },
+            ),
   
             const FeedScreen(),
 
@@ -264,12 +270,22 @@ class _HomeScreenState extends State<HomeScreen> {
 // HOME CONTENT
 // =================================================================
 
-class HomeContentScreen extends StatelessWidget {
+class HomeContentScreen extends StatefulWidget {
   final Function({
     String category,
     bool search,
   }) onOpenPets;
 
+  const HomeContentScreen({
+    super.key,
+    required this.onOpenPets,
+  });
+
+  @override
+  State<HomeContentScreen> createState() => _HomeContentScreenState();
+}
+
+class _HomeContentScreenState extends State<HomeContentScreen> {
   // ============================================================
   // COLORS
   // ============================================================
@@ -278,10 +294,15 @@ class HomeContentScreen extends StatelessWidget {
 
   static const Color darkText = Color(0xFF062B35);
 
-  const HomeContentScreen({
-    super.key,
-    required this.onOpenPets,
-  });
+  Future<void> _refresh() async {
+    await Future.wait([
+      PetData.syncWithSupabase(),
+      FavoritesService().init(),
+      NotificationService().refreshUnreadCount(),
+    ]);
+    SavedPetStore.syncWithFavorites(PetData.pets);
+    if (mounted) setState(() {});
+  }
 
   // ============================================================
   // BUILD
@@ -289,64 +310,73 @@ class HomeContentScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = ThemeService.isDarkMode(context);
+
     return Column(
       children: [
         _buildHeader(context),
 
         Expanded(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
+          child: RefreshIndicator(
+            color: primaryColor,
+            backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+            onRefresh: _refresh,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
 
-            padding: const EdgeInsets.fromLTRB(
-              10,
-              10,
-              10,
-              20,
-            ),
+              padding: const EdgeInsets.fromLTRB(
+                10,
+                10,
+                10,
+                20,
+              ),
 
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
 
-              children: [
-                _buildHero(),
+                children: [
+                  _buildHero(),
 
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-                _sectionTitle(context, 'Categories'),
+                  _sectionTitle(context, 'Categories'),
 
-                const SizedBox(height: 8),
+                  const SizedBox(height: 8),
 
-                _buildCategories(context),
+                  _buildCategories(context),
 
-                const SizedBox(height: 18),
+                  const SizedBox(height: 18),
 
-                _sectionTitle(
-                  context,
-                  'Featured Pets',
-                  seeAll: true,
-                  onSeeAll: () {
-                    onOpenPets(
-                      category: 'All',
-                      search: false,
-                    );
-                  },
-                ),
+                  _sectionTitle(
+                    context,
+                    'Featured Pets',
+                    seeAll: true,
+                    onSeeAll: () {
+                      widget.onOpenPets(
+                        category: 'All',
+                        search: false,
+                      );
+                    },
+                  ),
 
-                const SizedBox(height: 8),
+                  const SizedBox(height: 8),
 
-                _buildFeaturedPets(),
+                  _buildFeaturedPets(),
 
-                const SizedBox(height: 18),
+                  const SizedBox(height: 18),
 
-                _sectionTitle(
-                  context,
-                  'Recommended for You',
-                ),
+                  _sectionTitle(
+                    context,
+                    'Recommended for You',
+                  ),
 
-                const SizedBox(height: 8),
+                  const SizedBox(height: 8),
 
-                _buildRecommendedPets(),
-              ],
+                  _buildRecommendedPets(),
+                ],
+              ),
             ),
           ),
         ),
@@ -528,7 +558,7 @@ class HomeContentScreen extends StatelessWidget {
 
             child: ElevatedButton.icon(
               onPressed: () {
-                onOpenPets(
+                widget.onOpenPets(
                   category: 'All',
                   search: true,
                 );
@@ -621,7 +651,7 @@ class HomeContentScreen extends StatelessWidget {
             ),
 
             onTap: () {
-              onOpenPets(
+              widget.onOpenPets(
                 category: 'Dogs',
                 search: false,
               );
@@ -642,7 +672,7 @@ class HomeContentScreen extends StatelessWidget {
             ),
 
             onTap: () {
-              onOpenPets(
+              widget.onOpenPets(
                 category: 'Cats',
                 search: false,
               );

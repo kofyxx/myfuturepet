@@ -165,6 +165,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _refreshProfile() async {
+    await Future.wait([
+      _loadUserProfile(),
+      FavoritesService().init(),
+      NotificationService().refreshUnreadCount(),
+    ]);
+    SavedPetStore.syncWithFavorites(PetData.pets);
+    if (mounted) setState(() {});
+  }
+
   // ============================================================
   // BUILD
   // ============================================================
@@ -294,9 +304,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Expanded(
               child: Container(
                 color: bgCol,
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(14, 16, 14, 30),
+                child: RefreshIndicator(
+                  color: primaryColor,
+                  backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                  onRefresh: _refreshProfile,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
+                    ),
+                    padding: const EdgeInsets.fromLTRB(14, 16, 14, 30),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -431,6 +447,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
+            ),
             ),
           ],
         ),

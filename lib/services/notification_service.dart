@@ -233,6 +233,9 @@ class NotificationService {
     }
   }
 
+  /// Refresh unread count and notifications from Supabase
+  Future<void> refreshUnreadCount() => fetchNotifications();
+
   /// Mark a specific notification as read
   Future<void> markAsRead(NotificationItem item) async {
     if (item.isRead) return;

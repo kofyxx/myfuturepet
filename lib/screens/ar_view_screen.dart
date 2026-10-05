@@ -1,15 +1,19 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:sensors_plus/sensors_plus.dart';
 import '../pet_data.dart';
 
 class ARViewScreen extends StatefulWidget {
   final Map<String, dynamic>? pet;
+  final VoidCallback? onBack;
 
   const ARViewScreen({
     super.key,
     this.pet,
+    this.onBack,
   });
 
   @override
@@ -51,6 +55,17 @@ class _ARViewScreenState extends State<ARViewScreen>
   // Wag tail animation controller
   late AnimationController _wagController;
   late Animation<double> _wagAnimation;
+
+  // ============================================================
+  // AR SURFACE DETECTION & GYROSCOPE MOTION PARALLAX
+  // ============================================================
+
+  StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
+  StreamSubscription<GyroscopeEvent>? _gyroscopeSubscription;
+  bool _surfaceDetected = true;
+  String _surfaceStatus = 'Floor Surface Detected (Dining / Kitchen Floor)';
+  bool _isGroundAnchored = true;
+  Offset _gyroParallax = Offset.zero;
 
   // ============================================================
   // RESOLVED PET DATA
@@ -110,25 +125,88 @@ class _ARViewScreenState extends State<ARViewScreen>
 
     // Initial camera startup
     _initializeCamera();
+
+    // Start surface detection and gyro motion parallax
+    _initSensors();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _accelerometerSubscription?.cancel();
+    _gyroscopeSubscription?.cancel();
     _wagController.dispose();
-    _cameraController?.dispose();
+    final controller = _cameraController;
+    _cameraController = null;
+    controller?.dispose();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final controller = _cameraController;
-    if (controller == null || !controller.value.isInitialized) return;
-
-    if (state == AppLifecycleState.inactive) {
-      controller.dispose();
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      if (_cameraController != null) {
+        setState(() {
+          _cameraReady = false;
+        });
+        final controller = _cameraController;
+        _cameraController = null;
+        controller?.dispose();
+      }
     } else if (state == AppLifecycleState.resumed) {
       _initializeCamera();
+    }
+  }
+
+  void _handleBack() {
+    if (widget.onBack != null) {
+      widget.onBack!();
+    } else if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  void _initSensors() {
+    if (kIsWeb) return;
+
+    try {
+      _accelerometerSubscription = accelerometerEventStream().listen(
+        (event) {
+          final norm = math.sqrt(event.x * event.x + event.z * event.z);
+          final pitchDegrees = (math.atan2(event.y, norm) * 180 / math.pi).abs();
+
+          // Pitch between 18 and 78 degrees indicates pointing toward ground/floor
+          final bool detected = pitchDegrees >= 18.0 && pitchDegrees <= 78.0;
+          if (detected != _surfaceDetected && mounted) {
+            setState(() {
+              _surfaceDetected = detected;
+              _surfaceStatus = detected
+                  ? 'Floor Surface Detected (Dining / Kitchen Floor)'
+                  : 'Point camera towards the floor to align surface';
+            });
+          }
+        },
+        onError: (_) {},
+      );
+
+      _gyroscopeSubscription = gyroscopeEventStream().listen(
+        (event) {
+          if (!_isGroundAnchored || !mounted) return;
+          // Apply counter-motion parallax displacement:
+          // event.y: yaw velocity (turning left/right), event.x: pitch velocity
+          final dx = _gyroParallax.dx - (event.y * 0.0075);
+          final dy = _gyroParallax.dy + (event.x * 0.0075);
+          setState(() {
+            _gyroParallax = Offset(
+              dx.clamp(-0.20, 0.20) * 0.985,
+              dy.clamp(-0.16, 0.16) * 0.985,
+            );
+          });
+        },
+        onError: (_) {},
+      );
+    } catch (e) {
+      debugPrint('Sensor initialization error: $e');
     }
   }
 
@@ -257,63 +335,96 @@ class _ARViewScreenState extends State<ARViewScreen>
     final media = MediaQuery.of(context);
     final size = media.size;
 
-    return Scaffold(
-      backgroundColor: darkBrown,
-      body: SafeArea(
-        child: Center(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 500),
-            child: Stack(
-              children: [
-                // 1. Live Camera or Virtual Room Fallback
-                Positioned.fill(
-                  child: _buildCameraOrFallback(size),
-                ),
+    return PopScope(
+      canPop: Navigator.of(context).canPop(),
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && widget.onBack != null) {
+          widget.onBack!();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: darkBrown,
+        body: SafeArea(
+          child: Center(
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 500),
+              child: Stack(
+                children: [
+                  // 1. Live Camera or Virtual Room Fallback
+                  Positioned.fill(
+                    child: _buildCameraOrFallback(size),
+                  ),
 
-                // 2. Interactive Pet Spatial Canvas (Pinch / Drag / Shadow)
-                Positioned.fill(
-                  child: _buildInteractiveSpatialCanvas(size),
-                ),
+                  // 1.5 AR Surface Detection Grid (Perspective Floor Plane)
+                  if (_surfaceDetected)
+                    Positioned(
+                      top: size.height * 0.40,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: IgnorePointer(
+                        child: CustomPaint(
+                          painter: _ARSurfacePlanePainter(
+                            isAnchored: _isGroundAnchored,
+                            parallaxOffset: _gyroParallax,
+                          ),
+                        ),
+                      ),
+                    ),
 
-                // 3. Top Header Bar (Back, AR Pill, Help)
-                Positioned(
-                  top: 14,
-                  left: 14,
-                  right: 14,
-                  child: _buildTopHeaderBar(),
-                ),
+                  // 2. Interactive Pet Spatial Canvas (Pinch / Drag / Shadow)
+                  Positioned.fill(
+                    child: _buildInteractiveSpatialCanvas(size),
+                  ),
 
-                // 4. Right Side Toolbar (Move, Resize, Reset, Sizing Slider)
-                Positioned(
-                  right: 14,
-                  bottom: 230,
-                  child: _buildRightControls(),
-                ),
+                  // 3. Top Header Bar (Back, AR Pill, Help)
+                  Positioned(
+                    top: 14,
+                    left: 14,
+                    right: 14,
+                    child: _buildTopHeaderBar(),
+                  ),
 
-                // 5. Behavior Action Pills (Sit, Wag Tail, Speak)
-                Positioned(
-                  bottom: 175,
-                  left: 0,
-                  right: 0,
-                  child: _buildActionRow(),
-                ),
+                  // 3.5 Surface Detection HUD Status Banner
+                  Positioned(
+                    top: 68,
+                    left: 16,
+                    right: 16,
+                    child: _buildSurfaceStatusBanner(),
+                  ),
 
-                // 6. Selected Pet Information Card
-                Positioned(
-                  bottom: 92,
-                  left: 20,
-                  right: 20,
-                  child: _buildPetInfoCard(),
-                ),
+                  // 4. Right Side Toolbar (Move, Resize, Reset, Sizing Slider)
+                  Positioned(
+                    right: 14,
+                    bottom: 230,
+                    child: _buildRightControls(),
+                  ),
 
-                // 7. Bottom Shutter / Placement Button
-                Positioned(
-                  bottom: 16,
-                  left: 0,
-                  right: 0,
-                  child: _buildPlacementShutterButton(),
-                ),
-              ],
+                  // 5. Behavior Action Pills (Sit, Wag Tail, Speak)
+                  Positioned(
+                    bottom: 175,
+                    left: 0,
+                    right: 0,
+                    child: _buildActionRow(),
+                  ),
+
+                  // 6. Selected Pet Information Card
+                  Positioned(
+                    bottom: 92,
+                    left: 20,
+                    right: 20,
+                    child: _buildPetInfoCard(),
+                  ),
+
+                  // 7. Bottom Shutter / Placement Button
+                  Positioned(
+                    bottom: 16,
+                    left: 0,
+                    right: 0,
+                    child: _buildPlacementShutterButton(),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -468,9 +579,11 @@ class _ARViewScreenState extends State<ARViewScreen>
       );
     }
 
-    // Position calculations
-    final petX = (_petPosition.dx * size.width) - (110 * _scale);
-    final petY = (_petPosition.dy * size.height) - (130 * _scale);
+    // Position calculations with ground parallax anchoring
+    final effectiveX = (_petPosition.dx + (_isGroundAnchored ? _gyroParallax.dx : 0.0)).clamp(0.05, 0.95);
+    final effectiveY = (_petPosition.dy + (_isGroundAnchored ? _gyroParallax.dy : 0.0)).clamp(0.15, 0.90);
+    final petX = (effectiveX * size.width) - (110 * _scale);
+    final petY = (effectiveY * size.height) - (130 * _scale);
 
     return Positioned(
       left: petX.clamp(10.0, size.width - (220 * _scale) - 10.0),
@@ -721,7 +834,7 @@ class _ARViewScreenState extends State<ARViewScreen>
       children: [
         _roundButton(
           icon: Icons.arrow_back,
-          onTap: () => Navigator.pop(context),
+          onTap: _handleBack,
         ),
 
         // Center Pill: AR Preview
@@ -768,12 +881,106 @@ class _ARViewScreenState extends State<ARViewScreen>
   }
 
   // ============================================================
+  // SURFACE STATUS HUD BANNER
+  // ============================================================
+
+  Widget _buildSurfaceStatusBanner() {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.70),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: _surfaceDetected ? const Color(0xFF00E5D0) : const Color(0xFFFFA65C),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 8,
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _surfaceDetected ? Icons.check_circle_rounded : Icons.search_rounded,
+            size: 15,
+            color: _surfaceDetected ? const Color(0xFF00E5D0) : const Color(0xFFFFA65C),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _surfaceStatus,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.2,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (_surfaceDetected) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  _isGroundAnchored = !_isGroundAnchored;
+                  _gyroParallax = Offset.zero;
+                });
+                _showMessage(_isGroundAnchored
+                    ? 'Floor surface locked! Pet stays fixed on ground.'
+                    : 'Floor lock off (free-floating).');
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _isGroundAnchored ? const Color(0xFF008F82) : Colors.white24,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _isGroundAnchored ? 'LOCKED' : 'UNLOCK',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
   // RIGHT SIDE CONTROLS (RESET, SCALE SLIDER)
   // ============================================================
 
   Widget _buildRightControls() {
     return Column(
       children: [
+        _roundButton(
+          icon: _isGroundAnchored ? Icons.anchor : Icons.anchor_outlined,
+          tooltip: _isGroundAnchored ? 'Floor Anchor: ON' : 'Floor Anchor: OFF',
+          backgroundColor: _isGroundAnchored ? const Color(0xFF008F82) : Colors.white,
+          iconColor: _isGroundAnchored ? Colors.white : darkBrown,
+          onTap: () {
+            setState(() {
+              _isGroundAnchored = !_isGroundAnchored;
+              _gyroParallax = Offset.zero;
+            });
+            _showMessage(_isGroundAnchored
+                ? 'Floor surface lock enabled! 🐾'
+                : 'Free-floating mode enabled.');
+          },
+        ),
+        const SizedBox(height: 10),
         _roundButton(
           icon: Icons.refresh,
           tooltip: 'Reset AR Position',
@@ -1029,6 +1236,8 @@ class _ARViewScreenState extends State<ARViewScreen>
     required IconData icon,
     required VoidCallback onTap,
     String? tooltip,
+    Color? backgroundColor,
+    Color? iconColor,
   }) {
     return Tooltip(
       message: tooltip ?? '',
@@ -1038,7 +1247,7 @@ class _ARViewScreenState extends State<ARViewScreen>
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: backgroundColor ?? Colors.white,
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
@@ -1051,7 +1260,7 @@ class _ARViewScreenState extends State<ARViewScreen>
           child: Icon(
             icon,
             size: 20,
-            color: darkBrown,
+            color: iconColor ?? darkBrown,
           ),
         ),
       ),
@@ -1199,4 +1408,59 @@ class _FloorPerspectivePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ============================================================
+// AR SURFACE PLANE PAINTER (FLOOR GRID & PERSPECTIVE ANCHOR)
+// ============================================================
+
+class _ARSurfacePlanePainter extends CustomPainter {
+  final bool isAnchored;
+  final Offset parallaxOffset;
+
+  _ARSurfacePlanePainter({
+    required this.isAnchored,
+    this.parallaxOffset = Offset.zero,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final dotPaint = Paint()
+      ..color = const Color(0xFF00E5D0).withValues(alpha: isAnchored ? 0.35 : 0.6)
+      ..style = PaintingStyle.fill;
+
+    final linePaint = Paint()
+      ..color = const Color(0xFF00E5D0).withValues(alpha: isAnchored ? 0.15 : 0.25)
+      ..strokeWidth = 1.0;
+
+    final vanishingX = size.width * 0.5 + (parallaxOffset.dx * size.width * 0.5);
+    final vanishingY = -size.height * 0.2;
+
+    // Perspective plane grid
+    for (double x = -size.width * 0.2; x <= size.width * 1.2; x += size.width * 0.12) {
+      canvas.drawLine(
+        Offset(vanishingX, vanishingY),
+        Offset(x + parallaxOffset.dx * 60, size.height),
+        linePaint,
+      );
+    }
+
+    // Concentric perspective horizontal depth rings
+    for (double i = 0.25; i <= 0.95; i += 0.14) {
+      final y = size.height * math.pow(i, 1.6);
+      canvas.drawLine(
+        Offset(0, y + parallaxOffset.dy * 30),
+        Offset(size.width, y + parallaxOffset.dy * 30),
+        linePaint,
+      );
+      // Draw surface tracking dots
+      for (double dx = size.width * 0.1; dx < size.width * 0.95; dx += size.width * 0.14) {
+        canvas.drawCircle(Offset(dx, y + parallaxOffset.dy * 30), 2.2, dotPaint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ARSurfacePlanePainter oldDelegate) =>
+      oldDelegate.isAnchored != isAnchored || oldDelegate.parallaxOffset != parallaxOffset;
 }
