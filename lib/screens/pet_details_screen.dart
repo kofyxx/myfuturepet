@@ -121,10 +121,11 @@ class _PetDetailsScreenState extends State<PetDetailsScreen> {
     final String coatColor =
         (widget.pet['color'] ?? widget.pet['coatColor'] ?? 'Mixed').toString();
 
-    final String vaccinationStatus = (widget.pet['vaccination_status'] ??
+    final String rawVaccinationStatus = (widget.pet['vaccination_status'] ??
             widget.pet['vaccinationStatus'] ??
             'fully_vaccinated')
         .toString();
+    final String vaccinationStatus = _formatTitleCase(rawVaccinationStatus);
     final String healthCondition = (widget.pet['health_condition'] ??
             widget.pet['healthCondition'] ??
             'Healthy, hip checked')
@@ -135,7 +136,7 @@ class _PetDetailsScreenState extends State<PetDetailsScreen> {
                 : 'Up to date'))
         .toString();
     final String rabies = (widget.pet['rabies'] ??
-            (vaccinationStatus.toLowerCase().contains('unvac')
+            (rawVaccinationStatus.toLowerCase().contains('unvac')
                 ? 'Pending'
                 : 'Immunized'))
         .toString();
@@ -954,6 +955,16 @@ class _PetDetailsScreenState extends State<PetDetailsScreen> {
     );
   }
 
+  String _formatTitleCase(String val) {
+    if (val.isEmpty) return val;
+    return val
+        .replaceAll('_', ' ')
+        .split(' ')
+        .where((w) => w.isNotEmpty)
+        .map((w) => w[0].toUpperCase() + w.substring(1).toLowerCase())
+        .join(' ');
+  }
+
   // ============================================================
   // MEDICAL CARD
   // ============================================================
@@ -964,6 +975,7 @@ class _PetDetailsScreenState extends State<PetDetailsScreen> {
     required String value,
   }) {
     final bool isDark = ThemeService.isDarkMode(context);
+    final formattedValue = _formatTitleCase(value);
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -1001,7 +1013,7 @@ class _PetDetailsScreenState extends State<PetDetailsScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  value,
+                  formattedValue,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(

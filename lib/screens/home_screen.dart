@@ -323,7 +323,7 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
             onRefresh: _refresh,
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
+                parent: ClampingScrollPhysics(),
               ),
 
               padding: const EdgeInsets.fromLTRB(

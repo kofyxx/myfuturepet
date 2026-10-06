@@ -476,38 +476,41 @@ class _MyApplicationsScreenState
                     const SizedBox(height: 9),
 
                     // STATUS
-                    Container(
-                      padding:
-                          const EdgeInsets
-                              .symmetric(
-                        horizontal: 10,
-                        vertical: 5,
+                    Builder(
+                      builder: (context) {
+                          Color badgeBg = const Color(0xFFEAF8F6);
+                          Color badgeText = tealColor;
+                          final sLower = status.toLowerCase();
+                          if (sLower.contains('pend') || sLower.contains('review')) {
+                            badgeBg = const Color(0xFFFEF3C7);
+                            badgeText = const Color(0xFFD97706);
+                          } else if (sLower.contains('reject')) {
+                            badgeBg = const Color(0xFFFEE2E2);
+                            badgeText = const Color(0xFFDC2626);
+                          } else if (!sLower.contains('approv')) {
+                            badgeBg = const Color(0xFFE0F2FE);
+                            badgeText = const Color(0xFF0284C7);
+                          }
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: badgeBg,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              status,
+                              style: TextStyle(
+                                color: badgeText,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          );
+                        },
                       ),
-
-                      decoration:
-                          BoxDecoration(
-                        color: const Color(
-                          0xFFEAF8F6,
-                        ),
-
-                        borderRadius:
-                            BorderRadius
-                                .circular(
-                          20,
-                        ),
-                      ),
-
-                      child: Text(
-                        status,
-                        style:
-                            const TextStyle(
-                          color: tealColor,
-                          fontSize: 11,
-                          fontWeight:
-                              FontWeight.w700,
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),

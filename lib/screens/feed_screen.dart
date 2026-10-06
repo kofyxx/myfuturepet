@@ -63,15 +63,13 @@ class _FeedScreenState extends State<FeedScreen> {
       try {
         final profile = await _supabase
             .from('profiles')
-            .select('full_name, avatar_url')
+            .select('full_name')
             .eq('id', user.id)
             .maybeSingle();
 
         if (profile != null) {
           final dbName = profile['full_name']?.toString().trim() ?? '';
-          final dbAvatar = profile['avatar_url']?.toString().trim() ?? '';
           if (dbName.isNotEmpty) name = dbName;
-          if (dbAvatar.isNotEmpty) avatar = dbAvatar;
         }
       } catch (_) {}
 

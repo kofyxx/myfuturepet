@@ -49,7 +49,7 @@ class CommunityService {
 
       var query = _client
           .from('community_posts')
-          .select('*, author:author_id(id, full_name, email, avatar_url), shelter:shelter_id(id, name, logo_url), pet:pet_id(id, name, type, breed, image_url), post_comments(count)');
+          .select('*, author:author_id(id, full_name, email), shelter:shelter_id(id, name, logo_url), pet:pet_id(id, name, type, breed, image_url), post_comments(count)');
 
       if (category != null && category != 'All' && category.isNotEmpty) {
         query = query.eq('category', category);
@@ -156,7 +156,7 @@ class CommunityService {
     try {
       final response = await _client
           .from('post_comments')
-          .select('*, author:user_id(id, full_name, email, avatar_url)')
+          .select('*, author:user_id(id, full_name, email)')
           .eq('post_id', postId)
           .order('created_at', ascending: true);
 

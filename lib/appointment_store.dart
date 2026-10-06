@@ -44,9 +44,13 @@ class AppointmentStore {
                 ? '${scheduled.hour.toString().padLeft(2, '0')}:${scheduled.minute.toString().padLeft(2, '0')}'
                 : '10:00 AM',
             'shelter': shelterRaw?['name']?.toString() ?? 'JAGNA ANIMAL LOVER AND RESCUE GROUP',
-            'status': (raw['status'] ?? 'pending').toString().toUpperCase() == 'PENDING'
-                ? 'Confirmed'
-                : (raw['status'] ?? 'Confirmed'),
+            'status': () {
+              final s = (raw['status'] ?? 'pending').toString().toLowerCase();
+              if (s == 'confirmed' || s == 'approved') return 'Confirmed';
+              if (s == 'cancelled' || s == 'rejected') return 'Cancelled';
+              if (s == 'completed') return 'Completed';
+              return 'Pending';
+            }(),
             'createdAt': raw['created_at']?.toString() ?? '',
           });
         }

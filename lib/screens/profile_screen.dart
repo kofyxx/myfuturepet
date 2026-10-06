@@ -121,18 +121,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       try {
         final profile = await supabase
             .from('profiles')
-            .select('full_name, role, avatar_url')
+            .select('full_name, role')
             .eq('id', user.id)
             .maybeSingle();
 
         if (profile != null) {
           final String databaseName = profile['full_name']?.toString().trim() ?? '';
           final String databaseRole = profile['role']?.toString().trim() ?? '';
-          final String databaseImage = profile['avatar_url']?.toString().trim() ?? '';
 
           if (databaseName.isNotEmpty) loadedName = databaseName;
           if (databaseRole.isNotEmpty) loadedRole = databaseRole;
-          if (databaseImage.isNotEmpty) loadedImage = databaseImage;
         }
       } catch (_) {}
 
@@ -322,7 +320,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onRefresh: _refreshProfile,
                   child: SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(
-                      parent: BouncingScrollPhysics(),
+                      parent: ClampingScrollPhysics(),
                     ),
                     padding: const EdgeInsets.fromLTRB(14, 16, 14, 30),
                   child: Column(
@@ -1082,18 +1080,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                             // 2. Persist to profiles database and auth
                             if (currentUser != null) {
-                              final Map<String, dynamic> updates = {
+                              final Map<String, dynamic> profileUpdates = {
+                                'full_name': updatedName,
+                                'role': updatedRole,
+                              };
+                              await supabase
+                                  .from('profiles')
+                                  .update(profileUpdates)
+                                  .eq('id', currentUser.id);
+
+                              final Map<String, dynamic> authUpdates = {
                                 'full_name': updatedName,
                                 'role': updatedRole,
                               };
                               if (newAvatarUrl.isNotEmpty) {
-                                updates['avatar_url'] = newAvatarUrl;
+                                authUpdates['avatar_url'] = newAvatarUrl;
                               }
-                              await supabase
-                                  .from('profiles')
-                                  .update(updates)
-                                  .eq('id', currentUser.id);
-                              await supabase.auth.updateUser(UserAttributes(data: updates));
+                              await supabase.auth.updateUser(UserAttributes(data: authUpdates));
                             }
 
                             if (!mounted) return;

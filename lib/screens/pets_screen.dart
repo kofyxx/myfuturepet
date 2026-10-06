@@ -150,7 +150,7 @@ void dispose() {
                     onRefresh: _refreshPets,
                     child: SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(
-                        parent: BouncingScrollPhysics(),
+                        parent: ClampingScrollPhysics(),
                       ),
                       padding: const EdgeInsets.fromLTRB(
                         16,
