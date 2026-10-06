@@ -45,6 +45,8 @@ class AuthService {
 
       data: {
         'name': name,
+        'full_name': name,
+        'role': 'adopter',
       },
     );
 

@@ -190,6 +190,14 @@ class CommunityService {
       throw Exception('You must be logged in to comment.');
     }
 
+    final trimmedContent = content.trim();
+    if (trimmedContent.isEmpty) {
+      throw Exception('Comment cannot be empty.');
+    }
+    if (trimmedContent.length > 1000) {
+      throw Exception('Comment exceeds maximum length of 1,000 characters.');
+    }
+
     final String authorName = user.userMetadata?['full_name'] ??
         user.userMetadata?['name'] ??
         user.email?.split('@').first ??
@@ -199,7 +207,7 @@ class CommunityService {
       'id': 'cmt_${DateTime.now().millisecondsSinceEpoch}',
       'post_id': postId,
       'user_id': user.id,
-      'content': content.trim(),
+      'content': trimmedContent,
       'created_at': DateTime.now().toIso8601String(),
       'author': {
         'id': user.id,
@@ -257,9 +265,17 @@ class CommunityService {
       throw Exception('You must be logged in to create a post.');
     }
 
+    final trimmedContent = content.trim();
+    if (trimmedContent.isEmpty) {
+      throw Exception('Post content cannot be empty.');
+    }
+    if (trimmedContent.length > 3000) {
+      throw Exception('Post content exceeds maximum length of 3,000 characters.');
+    }
+
     try {
       final insertData = <String, dynamic>{
-        'content': content.trim(),
+        'content': trimmedContent,
         'author_id': user.id,
         'like_count': 0,
         'comment_count': 0,

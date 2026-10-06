@@ -1480,25 +1480,47 @@ class _AdoptionProcessScreenState
   bool _validateCurrentStep() {
     switch (currentStep) {
       case 0:
-        if (fullNameController.text
-                .trim()
-                .isEmpty ||
-            phoneController.text
-                .trim()
-                .isEmpty ||
-            emailController.text
-                .trim()
-                .isEmpty ||
-            ageController.text
-                .trim()
-                .isEmpty ||
-            occupationController.text
-                .trim()
-                .isEmpty) {
+        final name = fullNameController.text.trim();
+        final phone = phoneController.text.trim();
+        final email = emailController.text.trim();
+        final ageStr = ageController.text.trim();
+        final occupation = occupationController.text.trim();
+
+        if (name.isEmpty ||
+            phone.isEmpty ||
+            email.isEmpty ||
+            ageStr.isEmpty ||
+            occupation.isEmpty) {
           _showMessage(
             'Please complete all personal information.',
           );
+          return false;
+        }
 
+        // Email validation
+        final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+        if (!emailRegex.hasMatch(email)) {
+          _showMessage(
+            'Please enter a valid email address.',
+          );
+          return false;
+        }
+
+        // Phone validation (minimum 10 digits)
+        final cleanPhone = phone.replaceAll(RegExp(r'[\s\-\(\)\+]'), '');
+        if (cleanPhone.length < 10 || !RegExp(r'^\d+$').hasMatch(cleanPhone)) {
+          _showMessage(
+            'Please enter a valid contact number (e.g. 09123456789).',
+          );
+          return false;
+        }
+
+        // Age validation (18 - 100)
+        final age = int.tryParse(ageStr);
+        if (age == null || age < 18 || age > 100) {
+          _showMessage(
+            'Applicant must be at least 18 years old to adopt.',
+          );
           return false;
         }
 

@@ -947,7 +947,16 @@ class _CommentsSheetState extends State<_CommentsSheet> {
 
   Future<void> _submitComment() async {
     final text = _commentCtrl.text.trim();
-    if (text.isEmpty || _submitting) return;
+    if (text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a comment.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (_submitting) return;
 
     setState(() => _submitting = true);
     _commentCtrl.clear();
