@@ -44,6 +44,7 @@ dependencies:
   url_launcher: ^6.3.1
   sensors_plus: ^7.1.1
   image_picker: ^1.2.3
+  model_viewer_plus: ^1.10.0
 
 dev_dependencies:
   flutter_test:
@@ -75,6 +76,7 @@ flutter:
     - assets/images/pic2.png
     - assets/images/pic3.png
     - assets/images/google_logo.png
+    - assets/models/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

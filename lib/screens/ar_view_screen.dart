@@ -3,7 +3,9 @@ import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:model_viewer_plus/model_viewer_plus.dart';
 import 'package:sensors_plus/sensors_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../pet_data.dart';
 
 class ARViewScreen extends StatefulWidget {
@@ -100,6 +102,62 @@ class _ARViewScreenState extends State<ARViewScreen>
       return photos.first.toString();
     }
     return '';
+  }
+
+  // ============================================================
+  // 3D MODEL & GOOGLE ARCORE SCENE VIEWER INTEGRATION
+  // ============================================================
+
+  bool _is3DStudioMode = false;
+
+  String get _modelGlbUrl {
+    final direct = _resolvedPet['model_url']?.toString();
+    if (direct != null && direct.isNotEmpty) return direct;
+    final isCat = _petType == 'cat' ||
+        (_resolvedPet['category']?.toString().toLowerCase() == 'cats');
+    if (isCat) {
+      return 'https://szdjfucozmsxqjvctptv.supabase.co/storage/v1/object/public/pet-photos/models/cat.glb';
+    }
+    return 'https://szdjfucozmsxqjvctptv.supabase.co/storage/v1/object/public/pet-photos/models/dog.glb';
+  }
+
+  Future<void> _launchGoogleSceneViewer() async {
+    final modelUrl = _modelGlbUrl;
+    final petTitle = 'My Future Pet - $_petName';
+
+    // 1. Android Intent URI format for Google ARCore Scene Viewer
+    final intentUri = Uri.parse(
+      'intent://arvr.google.com/scene-viewer/1.0?file=${Uri.encodeComponent(modelUrl)}&mode=ar_only&title=${Uri.encodeComponent(petTitle)}&resizable=false#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;end;',
+    );
+
+    // 2. Fallback Web/HTTPS format
+    final webUri = Uri.parse(
+      'https://arvr.google.com/scene-viewer/1.0?file=${Uri.encodeComponent(modelUrl)}&mode=ar_only&title=${Uri.encodeComponent(petTitle)}',
+    );
+
+    try {
+      if (await canLaunchUrl(intentUri)) {
+        await launchUrl(intentUri, mode: LaunchMode.externalApplication);
+        return;
+      }
+    } catch (e) {
+      debugPrint('Scene Viewer Intent error: $e');
+    }
+
+    try {
+      if (await canLaunchUrl(webUri)) {
+        await launchUrl(webUri, mode: LaunchMode.externalApplication);
+        return;
+      }
+    } catch (e) {
+      debugPrint('Scene Viewer Web error: $e');
+    }
+
+    if (mounted) {
+      _showMessage(
+        'Opening 3D studio. For real floor projection, Google Play Services for AR is recommended.',
+      );
+    }
   }
 
   // ============================================================
@@ -350,13 +408,36 @@ class _ARViewScreenState extends State<ARViewScreen>
               constraints: const BoxConstraints(maxWidth: 500),
               child: Stack(
                 children: [
-                  // 1. Live Camera or Virtual Room Fallback
-                  Positioned.fill(
-                    child: _buildCameraOrFallback(size),
-                  ),
+                  // 1. Live Camera or Virtual Room Fallback (when in Camera mode)
+                  if (!_is3DStudioMode)
+                    Positioned.fill(
+                      child: _buildCameraOrFallback(size),
+                    ),
 
-                  // 1.5 Floor Placement Guide Reticle (only when placing)
-                  if (!_isPetPlaced)
+                  // 1b. 3D Studio Model Viewer (when in 3D Studio mode)
+                  if (_is3DStudioMode)
+                    Positioned.fill(
+                      child: Container(
+                        color: const Color(0xFF1E2833),
+                        child: ModelViewer(
+                          key: ValueKey(_modelGlbUrl),
+                          src: _modelGlbUrl,
+                          alt: '3D model of $_petName',
+                          ar: true,
+                          arModes: const ['scene-viewer', 'webxr', 'quick-look'],
+                          autoRotate: true,
+                          cameraControls: true,
+                          autoPlay: true,
+                          animationName: _currentAction == 'Sit'
+                              ? 'sit'
+                              : (_currentAction == 'Wag Tail' ? 'idle' : 'idle'),
+                          backgroundColor: const Color(0xFF1E2833),
+                        ),
+                      ),
+                    ),
+
+                  // 1.5 Floor Placement Guide Reticle (only when placing in camera mode)
+                  if (!_is3DStudioMode && !_isPetPlaced)
                     Positioned(
                       bottom: size.height * 0.35,
                       left: 0,
@@ -384,12 +465,13 @@ class _ARViewScreenState extends State<ARViewScreen>
                       ),
                     ),
 
-                  // 2. Interactive Pet Spatial Canvas (Pinch / Drag / Shadow)
-                  Positioned.fill(
-                    child: _buildInteractiveSpatialCanvas(size),
-                  ),
+                  // 2. Interactive Pet Spatial Canvas (Pinch / Drag / Shadow) only in camera mode
+                  if (!_is3DStudioMode)
+                    Positioned.fill(
+                      child: _buildInteractiveSpatialCanvas(size),
+                    ),
 
-                  // 3. Top Header Bar (Back, AR Pill, Help)
+                  // 3. Top Header Bar (Back, Mode Tabs, Floor AR)
                   Positioned(
                     top: 14,
                     left: 14,
@@ -405,12 +487,13 @@ class _ARViewScreenState extends State<ARViewScreen>
                     child: _buildSurfaceStatusBanner(),
                   ),
 
-                  // 4. Right Side Toolbar (Move, Resize, Reset, Sizing Slider)
-                  Positioned(
-                    right: 14,
-                    bottom: 230,
-                    child: _buildRightControls(),
-                  ),
+                  // 4. Right Side Toolbar (Move, Resize, Reset, Sizing Slider) - only in camera mode
+                  if (!_is3DStudioMode)
+                    Positioned(
+                      right: 14,
+                      bottom: 230,
+                      child: _buildRightControls(),
+                    ),
 
                   // 5. Behavior Action Pills (Sit, Wag Tail, Speak)
                   Positioned(
@@ -826,9 +909,9 @@ class _ARViewScreenState extends State<ARViewScreen>
           onTap: _handleBack,
         ),
 
-        // Center Pill: AR Preview
+        // Mode switch tabs: Camera AR vs 3D Studio
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(30),
@@ -843,29 +926,75 @@ class _ARViewScreenState extends State<ARViewScreen>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.view_in_ar,
-                color: primaryColor,
-                size: 17,
+              _buildModeTab(
+                title: 'Camera AR',
+                icon: Icons.camera_alt_outlined,
+                isSelected: !_is3DStudioMode,
+                onTap: () {
+                  setState(() => _is3DStudioMode = false);
+                  _showMessage('Switched to Live Camera AR View');
+                },
               ),
-              const SizedBox(width: 7),
-              Text(
-                'AR: $_petName',
-                style: const TextStyle(
-                  color: darkText,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                ),
+              _buildModeTab(
+                title: '3D Studio',
+                icon: Icons.view_in_ar_rounded,
+                isSelected: _is3DStudioMode,
+                onTap: () {
+                  setState(() => _is3DStudioMode = true);
+                  _showMessage('Switched to Interactive 3D Model Studio');
+                },
               ),
             ],
           ),
         ),
 
+        // Floor AR button (Google ARCore Scene Viewer)
         _roundButton(
-          icon: Icons.help_outline,
-          onTap: _showHelpDialog,
+          icon: Icons.view_in_ar,
+          tooltip: 'Floor AR (ARCore)',
+          backgroundColor: const Color(0xFF008F82),
+          iconColor: Colors.white,
+          onTap: _launchGoogleSceneViewer,
         ),
       ],
+    );
+  }
+
+  Widget _buildModeTab({
+    required String title,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? primaryColor : Colors.transparent,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 14,
+              color: isSelected ? Colors.white : darkText,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              title,
+              style: TextStyle(
+                color: isSelected ? Colors.white : darkText,
+                fontSize: 11.5,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -874,6 +1003,11 @@ class _ARViewScreenState extends State<ARViewScreen>
   // ============================================================
 
   Widget _buildSurfaceStatusBanner() {
+    final statusText = _is3DStudioMode
+        ? '3D Interactive Studio • 360° View & Rigged Animations'
+        : _surfaceStatus;
+    final isDetected = _is3DStudioMode ? true : _surfaceDetected;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
@@ -881,7 +1015,7 @@ class _ARViewScreenState extends State<ARViewScreen>
         color: Colors.black.withValues(alpha: 0.70),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: _surfaceDetected ? const Color(0xFF00E5D0) : const Color(0xFFFFA65C),
+          color: isDetected ? const Color(0xFF00E5D0) : const Color(0xFFFFA65C),
           width: 1.2,
         ),
         boxShadow: [
@@ -895,14 +1029,16 @@ class _ARViewScreenState extends State<ARViewScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            _surfaceDetected ? Icons.check_circle_rounded : Icons.search_rounded,
+            _is3DStudioMode
+                ? Icons.view_in_ar_rounded
+                : (_surfaceDetected ? Icons.check_circle_rounded : Icons.search_rounded),
             size: 15,
-            color: _surfaceDetected ? const Color(0xFF00E5D0) : const Color(0xFFFFA65C),
+            color: isDetected ? const Color(0xFF00E5D0) : const Color(0xFFFFA65C),
           ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              _surfaceStatus,
+              statusText,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 11.5,
@@ -913,7 +1049,7 @@ class _ARViewScreenState extends State<ARViewScreen>
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (_surfaceDetected) ...[
+          if (!_is3DStudioMode && _surfaceDetected) ...[
             const SizedBox(width: 8),
             GestureDetector(
               onTap: () {
@@ -938,6 +1074,33 @@ class _ARViewScreenState extends State<ARViewScreen>
                     fontSize: 9.5,
                     fontWeight: FontWeight.bold,
                   ),
+                ),
+              ),
+            ),
+          ] else if (_is3DStudioMode) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _launchGoogleSceneViewer,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF008F82),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.view_in_ar, size: 11, color: Colors.white),
+                    SizedBox(width: 3),
+                    Text(
+                      'FLOOR AR',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -996,6 +1159,12 @@ class _ARViewScreenState extends State<ARViewScreen>
             });
             _showMessage('Scale: ${(_scale * 100).toInt()}%');
           },
+        ),
+        const SizedBox(height: 10),
+        _roundButton(
+          icon: Icons.help_outline,
+          tooltip: 'How to Use AR',
+          onTap: _showHelpDialog,
         ),
       ],
     );
@@ -1183,6 +1352,33 @@ class _ARViewScreenState extends State<ARViewScreen>
   // ============================================================
 
   Widget _buildPlacementShutterButton() {
+    if (_is3DStudioMode) {
+      return Center(
+        child: ElevatedButton.icon(
+          onPressed: _launchGoogleSceneViewer,
+          icon: const Icon(Icons.view_in_ar, color: Colors.white, size: 20),
+          label: const Text(
+            'Project on Real Floor (Google AR)',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 13.5,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.3,
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF008F82),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(30),
+            ),
+            elevation: 6,
+          ),
+        ),
+      );
+    }
+
     return Center(
       child: GestureDetector(
         onTap: _togglePlacement,
@@ -1290,6 +1486,10 @@ class _ARViewScreenState extends State<ARViewScreen>
               _buildHelpRow(Icons.pan_tool, 'Touch and drag to move $_petName around your space.'),
               const SizedBox(height: 10),
               _buildHelpRow(Icons.pinch, 'Pinch with 2 fingers or use the right zoom buttons to scale size.'),
+              const SizedBox(height: 10),
+              _buildHelpRow(Icons.view_in_ar_rounded, 'Switch to "3D Studio" at top for full 360° orbiting and rigged animations.'),
+              const SizedBox(height: 10),
+              _buildHelpRow(Icons.open_in_new, 'Tap "Floor AR" to project real 3D pet on your physical floor with Google ARCore surface tracking.'),
               const SizedBox(height: 10),
               _buildHelpRow(Icons.pets, 'Tap Sit, Wag Tail, or Speak to trigger real-time pet reactions.'),
               const SizedBox(height: 10),
