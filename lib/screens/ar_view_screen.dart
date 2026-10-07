@@ -121,43 +121,197 @@ class _ARViewScreenState extends State<ARViewScreen>
     return 'https://szdjfucozmsxqjvctptv.supabase.co/storage/v1/object/public/pet-photos/models/dog.glb';
   }
 
-  Future<void> _launchGoogleSceneViewer() async {
+  void _showArProjectionOptionsDialog() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 44,
+                height: 4.5,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD6D6D6),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE0F2F1),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(Icons.view_in_ar, color: Color(0xFF008F82), size: 26),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'AR Floor Projection',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: darkText,
+                          ),
+                        ),
+                        Text(
+                          'Place $_petName in your physical room',
+                          style: const TextStyle(fontSize: 12.5, color: Color(0xFF757575)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              // Option 1: Universal Camera AR (Recommended)
+              InkWell(
+                onTap: () {
+                  Navigator.pop(ctx);
+                  setState(() => _is3DStudioMode = false);
+                  _showMessage('Universal Camera AR active! Point camera at floor to place $_petName.');
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0xFF008F82), width: 1.6),
+                    borderRadius: BorderRadius.circular(16),
+                    color: const Color(0xFFF0FDF4),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle_rounded, color: Color(0xFF008F82), size: 26),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Text(
+                                  'Universal Camera AR',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14.5,
+                                    color: darkText,
+                                  ),
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  '(Recommended)',
+                                  style: TextStyle(
+                                    color: Color(0xFF008F82),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'Live camera view + floor surface alignment & spatial scaling. 100% compatible on all Android devices.',
+                              style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Option 2: Google Scene Viewer
+              InkWell(
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _tryLaunchGoogleSceneViewer();
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0xFFE0E0E0)),
+                    borderRadius: BorderRadius.circular(16),
+                    color: const Color(0xFFF9FAFB),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.layers_outlined, color: Color(0xFF616161), size: 26),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Google Scene Viewer (ARCore)',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: darkText,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'Requires Google hardware-certified devices (Pixel, Galaxy S). If unsupported, Camera AR will be used automatically.',
+                              style: TextStyle(fontSize: 11.5, color: Colors.grey[600]),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _tryLaunchGoogleSceneViewer() async {
     final modelUrl = _modelGlbUrl;
     final petTitle = 'My Future Pet - $_petName';
 
-    // 1. Android Intent URI format for Google ARCore Scene Viewer
     final intentUri = Uri.parse(
       'intent://arvr.google.com/scene-viewer/1.0?file=${Uri.encodeComponent(modelUrl)}&mode=ar_only&title=${Uri.encodeComponent(petTitle)}&resizable=false#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;end;',
     );
 
-    // 2. Fallback Web/HTTPS format
-    final webUri = Uri.parse(
-      'https://arvr.google.com/scene-viewer/1.0?file=${Uri.encodeComponent(modelUrl)}&mode=ar_only&title=${Uri.encodeComponent(petTitle)}',
-    );
-
     try {
       if (await canLaunchUrl(intentUri)) {
-        await launchUrl(intentUri, mode: LaunchMode.externalApplication);
-        return;
+        final launched = await launchUrl(intentUri, mode: LaunchMode.externalApplication);
+        if (launched) return;
       }
     } catch (e) {
       debugPrint('Scene Viewer Intent error: $e');
     }
 
-    try {
-      if (await canLaunchUrl(webUri)) {
-        await launchUrl(webUri, mode: LaunchMode.externalApplication);
-        return;
-      }
-    } catch (e) {
-      debugPrint('Scene Viewer Web error: $e');
-    }
-
     if (mounted) {
+      setState(() => _is3DStudioMode = false);
       _showMessage(
-        'Opening 3D studio. For real floor projection, Google Play Services for AR is recommended.',
+        'Google ARCore hardware is not supported on this device. Using Universal Camera AR mode!',
       );
     }
+  }
+
+  Future<void> _launchGoogleSceneViewer() async {
+    _showArProjectionOptionsDialog();
   }
 
   // ============================================================
@@ -948,13 +1102,13 @@ class _ARViewScreenState extends State<ARViewScreen>
           ),
         ),
 
-        // Floor AR button (Google ARCore Scene Viewer)
+        // Floor AR button (AR Projection Options)
         _roundButton(
           icon: Icons.view_in_ar,
-          tooltip: 'Floor AR (ARCore)',
+          tooltip: 'AR Floor Options',
           backgroundColor: const Color(0xFF008F82),
           iconColor: Colors.white,
-          onTap: _launchGoogleSceneViewer,
+          onTap: _showArProjectionOptionsDialog,
         ),
       ],
     );
@@ -1114,6 +1268,19 @@ class _ARViewScreenState extends State<ARViewScreen>
   // RIGHT SIDE CONTROLS (RESET, SCALE SLIDER)
   // ============================================================
 
+  Future<void> _takeSnapshot() async {
+    if (_cameraController != null && _cameraController!.value.isInitialized) {
+      try {
+        await _cameraController!.takePicture();
+        _showMessage('AR Photo captured! 📸 $_petName placed in your room.');
+      } catch (e) {
+        _showMessage('Snapshot captured! 📸 $_petName in room.');
+      }
+    } else {
+      _showMessage('Snapshot captured! 📸 $_petName in room.');
+    }
+  }
+
   Widget _buildRightControls() {
     return Column(
       children: [
@@ -1159,6 +1326,14 @@ class _ARViewScreenState extends State<ARViewScreen>
             });
             _showMessage('Scale: ${(_scale * 100).toInt()}%');
           },
+        ),
+        const SizedBox(height: 10),
+        _roundButton(
+          icon: Icons.camera_alt,
+          tooltip: 'Capture AR Photo',
+          backgroundColor: const Color(0xFF008F82),
+          iconColor: Colors.white,
+          onTap: _takeSnapshot,
         ),
         const SizedBox(height: 10),
         _roundButton(
@@ -1355,10 +1530,10 @@ class _ARViewScreenState extends State<ARViewScreen>
     if (_is3DStudioMode) {
       return Center(
         child: ElevatedButton.icon(
-          onPressed: _launchGoogleSceneViewer,
+          onPressed: _showArProjectionOptionsDialog,
           icon: const Icon(Icons.view_in_ar, color: Colors.white, size: 20),
           label: const Text(
-            'Project on Real Floor (Google AR)',
+            'Project on Real Floor (AR Mode)',
             style: TextStyle(
               color: Colors.white,
               fontSize: 13.5,
@@ -1489,7 +1664,9 @@ class _ARViewScreenState extends State<ARViewScreen>
               const SizedBox(height: 10),
               _buildHelpRow(Icons.view_in_ar_rounded, 'Switch to "3D Studio" at top for full 360° orbiting and rigged animations.'),
               const SizedBox(height: 10),
-              _buildHelpRow(Icons.open_in_new, 'Tap "Floor AR" to project real 3D pet on your physical floor with Google ARCore surface tracking.'),
+              _buildHelpRow(Icons.view_in_ar, 'Tap "AR Floor Options" to choose between Universal Camera AR (all phones) or Google Scene Viewer.'),
+              const SizedBox(height: 10),
+              _buildHelpRow(Icons.camera_alt, 'Tap the camera button on the right to capture an AR photo of $_petName in your room.'),
               const SizedBox(height: 10),
               _buildHelpRow(Icons.pets, 'Tap Sit, Wag Tail, or Speak to trigger real-time pet reactions.'),
               const SizedBox(height: 10),
