@@ -39,6 +39,8 @@ class AdoptionApplicationStore {
             'householdType': raw['housing_type']?.toString() ?? '',
             'address': raw['address']?.toString() ?? '',
             'submittedAt': raw['created_at']?.toString() ?? '',
+            'reviewNotes': raw['review_notes']?.toString() ?? '',
+            'decidedAt': raw['decided_at']?.toString() ?? '',
           });
         }
       }

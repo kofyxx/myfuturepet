@@ -388,6 +388,33 @@ class _SavedPetsScreenState
                 ),
               ),
             ),
+
+            const SizedBox(height: 22),
+
+            // FAVORITES TIP
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF9FAFB),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.lightbulb_outline, color: Color(0xFF008F82), size: 18),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Tip: Tap the heart icon on any pet card to save them to your favorites list.',
+                      style: TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 11.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),

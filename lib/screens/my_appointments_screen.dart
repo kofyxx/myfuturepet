@@ -185,6 +185,46 @@ class _MyAppointmentsScreenState
                 ),
               ),
             ),
+
+            const SizedBox(height: 22),
+
+            // SHELTER VISITING GUIDELINES
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.location_on, color: Color(0xFF008F82), size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        'Visiting Jagna Rescue Shelter',
+                        style: TextStyle(
+                          color: Color(0xFF1B5E20),
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Visiting hours: Monday to Saturday, 9:00 AM – 4:00 PM.\nAppointments allow shelter caretakers to prepare your companion for a safe and personalized interaction.',
+                    style: TextStyle(
+                      color: Color(0xFF2E7D32),
+                      fontSize: 12,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../adoption_application_store.dart';
 import 'pets_screen.dart';
+import 'visit_appointment_screen.dart';
 
 class MyApplicationsScreen extends StatefulWidget {
   // ============================================================
@@ -221,9 +222,83 @@ class _MyApplicationsScreenState
                 ),
               ),
             ),
+
+            const SizedBox(height: 24),
+
+            // ADOPTION STEPS GUIDE
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF9FAFB),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Color(0xFF008F82), size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        'How Adoption Works',
+                        style: TextStyle(
+                          color: darkText,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  _buildAdoptionStepRow('1', 'Find a pet you love and submit an adoption application.'),
+                  const SizedBox(height: 8),
+                  _buildAdoptionStepRow('2', 'Shelter staff reviews your screening within 24–48 hours.'),
+                  const SizedBox(height: 8),
+                  _buildAdoptionStepRow('3', 'Once approved, book a shelter visit to meet your pet in person!'),
+                ],
+              ),
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildAdoptionStepRow(String number, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 20,
+          height: 20,
+          decoration: const BoxDecoration(
+            color: Color(0xFFE0F2F1),
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              number,
+              style: const TextStyle(
+                color: Color(0xFF008F82),
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Color(0xFF4B5563),
+              fontSize: 12,
+              height: 1.35,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -530,6 +605,99 @@ class _MyApplicationsScreenState
 
           const SizedBox(height: 12),
 
+          // APPROVED CELEBRATION & BOOK VISIT BANNER
+          if (status.toLowerCase().contains('approv')) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFA5D6A7), width: 1.2),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.celebration_rounded, color: Color(0xFF2E7D32), size: 22),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Application Approved! 🎉',
+                          style: TextStyle(
+                            color: Color(0xFF1B5E20),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Schedule a shelter visit to meet your pet.',
+                          style: TextStyle(
+                            color: Color(0xFF2E7D32),
+                            fontSize: 10.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: () => _scheduleVisitForApprovedPet(application),
+                    icon: const Icon(Icons.calendar_month, size: 14),
+                    label: const Text(
+                      'Book Visit',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF008F82),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // SHELTER REMARKS / NOTES
+          if (application['reviewNotes'] != null &&
+              application['reviewNotes'].toString().trim().isNotEmpty) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF9FAFB),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.rate_review_outlined, size: 15, color: Color(0xFF6B7280)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Shelter Note: ${application['reviewNotes']}',
+                      style: const TextStyle(
+                        color: Color(0xFF4B5563),
+                        fontSize: 11.5,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
           // ====================================================
           // SUBMITTED DATE + VIEW BUTTON
           // ====================================================
@@ -639,6 +807,21 @@ class _MyApplicationsScreenState
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // SCHEDULE VISIT FOR APPROVED PET
+  // ============================================================
+
+  void _scheduleVisitForApprovedPet(Map<String, dynamic> application) {
+    final Map<String, dynamic> pet =
+        Map<String, dynamic>.from(application['pet'] as Map? ?? {});
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VisitAppointmentScreen(pet: pet),
       ),
     );
   }
