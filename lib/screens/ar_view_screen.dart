@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 import 'package:sensors_plus/sensors_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../pet_data.dart';
 
 class ARViewScreen extends StatefulWidget {
@@ -23,7 +22,7 @@ class ARViewScreen extends StatefulWidget {
 }
 
 class _ARViewScreenState extends State<ARViewScreen>
-    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+    with WidgetsBindingObserver {
   // ============================================================
   // PALETTE & STYLING
   // ============================================================
@@ -48,15 +47,10 @@ class _ARViewScreenState extends State<ARViewScreen>
 
   bool _isPetPlaced = true;
   Offset _petPosition = const Offset(0.5, 0.58); // Normalized viewport coordinates [0..1]
-  double _scale = 1.0; // Sizing factor (0.5 to 2.2)
-  double _baseScale = 1.0;
+  double _scale = 1.0; // Sizing factor (0.4 to 2.5)
 
   String _currentAction = 'Normal'; // 'Normal', 'Sit', 'Wag Tail', 'Speak'
   bool _showSpeechBubble = false;
-
-  // Wag tail animation controller
-  late AnimationController _wagController;
-  late Animation<double> _wagAnimation;
 
   // ============================================================
   // AR SURFACE DETECTION & GYROSCOPE MOTION PARALLAX
@@ -65,9 +59,33 @@ class _ARViewScreenState extends State<ARViewScreen>
   StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
   StreamSubscription<GyroscopeEvent>? _gyroscopeSubscription;
   bool _surfaceDetected = true;
-  String _surfaceStatus = 'Floor Surface Detected 🐾';
+  String _surfaceStatus = 'Floor Surface Detected (Ground Horizon Locked)';
   bool _isGroundAnchored = true;
   Offset _gyroParallax = Offset.zero;
+
+  // ============================================================
+  // 1:1 METRIC LIFE-SCALE ENGINE
+  // ============================================================
+
+  bool _isLifeScaleLocked = true;
+  double _viewingDistanceMeters = 1.5; // Default distance: 1.5 meters from floor
+
+  /// Physical shoulder height of the pet in centimeters.
+  double get _realLifeHeightCm {
+    final size = _petSize.toUpperCase();
+    if (_petType == 'cat') return 25.0; // Domestic cat / kitten
+    if (size.contains('SMALL') || size.contains('TOY')) return 28.0; // Small dog (Shih Tzu, Chihuahua)
+    if (size.contains('LARGE') || size.contains('XL')) return 60.0; // Large dog (Labrador, Golden Retriever, Sky)
+    return 45.0; // Medium dog baseline (Standard Aspin)
+  }
+
+  /// Calculates optical perspective scale factor based on viewing distance.
+  /// Standard baseline: Medium dog (45cm) at 1.5m corresponds to scale factor 1.0.
+  double _calculateLifeScale(double distanceMeters) {
+    final baseScaleForPet = _realLifeHeightCm / 45.0;
+    final distanceFactor = 1.5 / math.max(0.5, distanceMeters);
+    return (baseScaleForPet * distanceFactor).clamp(0.40, 2.50);
+  }
 
   // ============================================================
   // RESOLVED PET DATA
@@ -105,7 +123,7 @@ class _ARViewScreenState extends State<ARViewScreen>
   }
 
   // ============================================================
-  // 3D MODEL & GOOGLE ARCORE SCENE VIEWER INTEGRATION
+  // 3D MODEL & DISPLAY MODE
   // ============================================================
 
   bool _is3DStudioMode = false;
@@ -161,7 +179,7 @@ class _ARViewScreenState extends State<ARViewScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'AR Floor Projection',
+                          'AR Display Options',
                           style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.bold,
@@ -169,7 +187,7 @@ class _ARViewScreenState extends State<ARViewScreen>
                           ),
                         ),
                         Text(
-                          'Place $_petName in your physical room',
+                          'View $_petName in physical space or 3D showroom',
                           style: const TextStyle(fontSize: 12.5, color: Color(0xFF757575)),
                         ),
                       ],
@@ -182,8 +200,11 @@ class _ARViewScreenState extends State<ARViewScreen>
               InkWell(
                 onTap: () {
                   Navigator.pop(ctx);
-                  setState(() => _is3DStudioMode = false);
-                  _showMessage('Universal Camera AR active! Point camera at floor to place $_petName.');
+                  setState(() {
+                    _is3DStudioMode = false;
+                    _isPetPlaced = true;
+                  });
+                  _showMessage('Universal Camera AR active. Point camera at floor to position $_petName.');
                 },
                 borderRadius: BorderRadius.circular(16),
                 child: Container(
@@ -213,7 +234,7 @@ class _ARViewScreenState extends State<ARViewScreen>
                                 ),
                                 SizedBox(width: 6),
                                 Text(
-                                  '(Recommended)',
+                                  '(100% Android Compatible)',
                                   style: TextStyle(
                                     color: Color(0xFF008F82),
                                     fontSize: 11,
@@ -224,7 +245,7 @@ class _ARViewScreenState extends State<ARViewScreen>
                             ),
                             const SizedBox(height: 3),
                             Text(
-                              'Live camera view + floor surface alignment & spatial scaling. 100% compatible on all Android devices.',
+                              'Live camera feed with real floor surface alignment and 1:1 life-scale. Works on all Android smartphones.',
                               style: TextStyle(fontSize: 12, color: Colors.grey[700]),
                             ),
                           ],
@@ -235,11 +256,12 @@ class _ARViewScreenState extends State<ARViewScreen>
                 ),
               ),
               const SizedBox(height: 12),
-              // Option 2: Google Scene Viewer
+              // Option 2: 3D Model Inspection Studio
               InkWell(
                 onTap: () {
                   Navigator.pop(ctx);
-                  _tryLaunchGoogleSceneViewer();
+                  setState(() => _is3DStudioMode = true);
+                  _showMessage('Switched to 3D Inspection Studio.');
                 },
                 borderRadius: BorderRadius.circular(16),
                 child: Container(
@@ -251,14 +273,14 @@ class _ARViewScreenState extends State<ARViewScreen>
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.layers_outlined, color: Color(0xFF616161), size: 26),
+                      const Icon(Icons.view_in_ar_rounded, color: Color(0xFF616161), size: 26),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              'Google Scene Viewer (ARCore)',
+                              '3D Inspection Studio',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14,
@@ -267,7 +289,7 @@ class _ARViewScreenState extends State<ARViewScreen>
                             ),
                             const SizedBox(height: 3),
                             Text(
-                              'Requires Google hardware-certified devices (Pixel, Galaxy S). If unsupported, Camera AR will be used automatically.',
+                              'High-contrast 360° rotation booth for detailed inspection of fur textures and body build.',
                               style: TextStyle(fontSize: 11.5, color: Colors.grey[600]),
                             ),
                           ],
@@ -285,35 +307,6 @@ class _ARViewScreenState extends State<ARViewScreen>
     );
   }
 
-  Future<void> _tryLaunchGoogleSceneViewer() async {
-    final modelUrl = _modelGlbUrl;
-    final petTitle = 'My Future Pet - $_petName';
-
-    final intentUri = Uri.parse(
-      'intent://arvr.google.com/scene-viewer/1.0?file=${Uri.encodeComponent(modelUrl)}&mode=ar_only&title=${Uri.encodeComponent(petTitle)}&resizable=false#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;end;',
-    );
-
-    try {
-      if (await canLaunchUrl(intentUri)) {
-        final launched = await launchUrl(intentUri, mode: LaunchMode.externalApplication);
-        if (launched) return;
-      }
-    } catch (e) {
-      debugPrint('Scene Viewer Intent error: $e');
-    }
-
-    if (mounted) {
-      setState(() => _is3DStudioMode = false);
-      _showMessage(
-        'Google ARCore hardware is not supported on this device. Using Universal Camera AR mode!',
-      );
-    }
-  }
-
-  Future<void> _launchGoogleSceneViewer() async {
-    _showArProjectionOptionsDialog();
-  }
-
   // ============================================================
   // LIFECYCLE
   // ============================================================
@@ -323,17 +316,7 @@ class _ARViewScreenState extends State<ARViewScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _wagController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 320),
-    );
-
-    _wagAnimation = Tween<double>(begin: -0.07, end: 0.07).animate(
-      CurvedAnimation(
-        parent: _wagController,
-        curve: Curves.easeInOut,
-      ),
-    );
+    _scale = _calculateLifeScale(_viewingDistanceMeters);
 
     // Initial camera startup
     _initializeCamera();
@@ -347,7 +330,6 @@ class _ARViewScreenState extends State<ARViewScreen>
     WidgetsBinding.instance.removeObserver(this);
     _accelerometerSubscription?.cancel();
     _gyroscopeSubscription?.cancel();
-    _wagController.dispose();
     final controller = _cameraController;
     _cameraController = null;
     controller?.dispose();
@@ -393,8 +375,8 @@ class _ARViewScreenState extends State<ARViewScreen>
             setState(() {
               _surfaceDetected = detected;
               _surfaceStatus = detected
-                  ? 'Floor Surface Detected (Dining / Kitchen Floor)'
-                  : 'Point camera towards the floor to align surface';
+                  ? 'Floor Surface Detected (Ground Horizon Locked)'
+                  : 'Point camera toward floor to align surface';
             });
           }
         },
@@ -405,7 +387,6 @@ class _ARViewScreenState extends State<ARViewScreen>
         (event) {
           if (!_isGroundAnchored || !mounted) return;
           // Apply counter-motion parallax displacement:
-          // event.y: yaw velocity (turning left/right), event.x: pitch velocity
           final dx = _gyroParallax.dx - (event.y * 0.0075);
           final dy = _gyroParallax.dy + (event.x * 0.0075);
           setState(() {
@@ -423,11 +404,10 @@ class _ARViewScreenState extends State<ARViewScreen>
   }
 
   // ============================================================
-  // CAMERA INITIALIZATION WITH BUDGET / WEB FALLBACK
+  // CAMERA INITIALIZATION
   // ============================================================
 
   Future<void> _initializeCamera() async {
-    // If running on web or desktop without rear camera, switch to failsafe fallback gracefully
     if (kIsWeb) {
       setState(() {
         _cameraError = true;
@@ -491,21 +471,13 @@ class _ARViewScreenState extends State<ARViewScreen>
     });
 
     if (action == 'Wag Tail') {
-      _wagController.repeat(reverse: true);
-      _showMessage('$_petName is happily wagging its tail! 🐾');
-    } else {
-      _wagController.stop();
-      _wagController.reset();
-    }
-
-    if (action == 'Sit') {
-      _showMessage('$_petName is in a calm sit stance.');
-    }
-
-    if (action == 'Speak') {
+      _showMessage('$_petName is wagging tail.');
+    } else if (action == 'Sit') {
+      _showMessage('$_petName is in sit posture.');
+    } else if (action == 'Speak') {
       setState(() => _showSpeechBubble = true);
-      final sound = _petType == 'cat' ? 'Meow! Purrr... 🐱' : 'Woof! Woof! 🐶';
-      _showMessage('$_petName says: $sound');
+      final sound = _petType == 'cat' ? 'Meow! Purrr...' : 'Woof! Woof!';
+      _showMessage('$_petName vocalizes: $sound');
 
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted && _currentAction == 'Speak') {
@@ -518,13 +490,13 @@ class _ARViewScreenState extends State<ARViewScreen>
   void _resetAR() {
     setState(() {
       _petPosition = const Offset(0.5, 0.58);
-      _scale = 1.0;
+      _isLifeScaleLocked = true;
+      _viewingDistanceMeters = 1.5;
+      _scale = _calculateLifeScale(1.5);
       _currentAction = 'Normal';
       _showSpeechBubble = false;
     });
-    _wagController.stop();
-    _wagController.reset();
-    _showMessage('AR view reset to default center placement.');
+    _showMessage('AR view reset to default 1:1 scale placement.');
   }
 
   void _togglePlacement() {
@@ -532,7 +504,7 @@ class _ARViewScreenState extends State<ARViewScreen>
       _isPetPlaced = !_isPetPlaced;
     });
     if (_isPetPlaced) {
-      _showMessage('$_petName placed in your surroundings! Drag to move, pinch to resize.');
+      _showMessage('$_petName placed in your surroundings. Drag handle to move.');
     } else {
       _showMessage('Aim reticle at a flat surface and tap to place $_petName.');
     }
@@ -565,27 +537,38 @@ class _ARViewScreenState extends State<ARViewScreen>
                   // 1. Live Camera or Virtual Room Fallback (when in Camera mode)
                   if (!_is3DStudioMode)
                     Positioned.fill(
-                      child: _buildCameraOrFallback(size),
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onTapUp: (details) {
+                          // Tap anywhere on the floor to position pet
+                          final tappedX = (details.localPosition.dx / size.width).clamp(0.10, 0.90);
+                          final tappedY = (details.localPosition.dy / size.height).clamp(0.20, 0.85);
+                          setState(() {
+                            _petPosition = Offset(tappedX, tappedY);
+                            _isPetPlaced = true;
+                          });
+                          _showMessage('$_petName positioned on floor.');
+                        },
+                        child: _buildCameraOrFallback(size),
+                      ),
                     ),
 
-                  // 1b. 3D Studio Model Viewer (when in 3D Studio mode)
+                  // 1b. 3D Studio Model Viewer (when in 3D Studio inspection mode)
                   if (_is3DStudioMode)
                     Positioned.fill(
                       child: Container(
                         color: const Color(0xFF1E2833),
                         child: ModelViewer(
-                          key: ValueKey(_modelGlbUrl),
+                          key: ValueKey('${_modelGlbUrl}_studio_$_currentAction'),
                           src: _modelGlbUrl,
                           alt: '3D model of $_petName',
-                          ar: true,
-                          arModes: const ['scene-viewer', 'webxr', 'quick-look'],
+                          ar: false,
                           autoRotate: true,
                           cameraControls: true,
                           autoPlay: true,
-                          animationName: _currentAction == 'Sit'
-                              ? 'sit'
-                              : (_currentAction == 'Wag Tail' ? 'idle' : 'idle'),
+                          animationName: _currentAction == 'Sit' ? 'sit' : 'idle',
                           backgroundColor: const Color(0xFF1E2833),
+                          shadowIntensity: 0.85,
                         ),
                       ),
                     ),
@@ -610,7 +593,7 @@ class _ARViewScreenState extends State<ARViewScreen>
                               Icon(Icons.touch_app_rounded, color: Color(0xFF00E5D0), size: 16),
                               SizedBox(width: 8),
                               Text(
-                                'Aim at floor & tap shutter to place pet',
+                                'Aim at floor & tap surface or shutter to place pet',
                                 style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
                               ),
                             ],
@@ -619,13 +602,11 @@ class _ARViewScreenState extends State<ARViewScreen>
                       ),
                     ),
 
-                  // 2. Interactive Pet Spatial Canvas (Pinch / Drag / Shadow) only in camera mode
+                  // 2. Interactive 3D Pet Spatial Canvas (only in camera mode)
                   if (!_is3DStudioMode)
-                    Positioned.fill(
-                      child: _buildInteractiveSpatialCanvas(size),
-                    ),
+                    _buildInteractiveSpatialCanvas(size),
 
-                  // 3. Top Header Bar (Back, Mode Tabs, Floor AR)
+                  // 3. Top Header Bar (Back, Mode Tabs, Options)
                   Positioned(
                     top: 14,
                     left: 14,
@@ -641,7 +622,16 @@ class _ARViewScreenState extends State<ARViewScreen>
                     child: _buildSurfaceStatusBanner(),
                   ),
 
-                  // 4. Right Side Toolbar (Move, Resize, Reset, Sizing Slider) - only in camera mode
+                  // 3.7 Distance Selector (when 1:1 Life Scale is locked and in Camera AR)
+                  if (!_is3DStudioMode && _isLifeScaleLocked)
+                    Positioned(
+                      top: 114,
+                      left: 16,
+                      right: 16,
+                      child: _buildDistanceSelector(),
+                    ),
+
+                  // 4. Right Side Toolbar (Scale Lock, Move, Resize, Reset) - only in camera mode
                   if (!_is3DStudioMode)
                     Positioned(
                       right: 14,
@@ -757,37 +747,39 @@ class _ARViewScreenState extends State<ARViewScreen>
   }
 
   // ============================================================
-  // SPATIAL CANVAS: DRAG, PINCH, SHADOW & ACTION REACTION
+  // SPATIAL CANVAS: 3D MODEL, SHADOW, DRAG, 1:1 METRIC TAG
   // ============================================================
 
   Widget _buildInteractiveSpatialCanvas(Size size) {
     if (!_isPetPlaced) {
       // Reticle targeting guide centered on screen
-      return Center(
-        child: Container(
-          width: 120,
-          height: 120,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: const Color(0xFF00E5D0).withValues(alpha: 0.85),
-              width: 2.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF00E5D0).withValues(alpha: 0.3),
-                blurRadius: 16,
-                spreadRadius: 2,
+      return Positioned.fill(
+        child: Center(
+          child: Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: (_surfaceDetected ? const Color(0xFF00E5D0) : const Color(0xFFFFA65C)).withValues(alpha: 0.85),
+                width: 2.5,
               ),
-            ],
-          ),
-          child: Center(
-            child: Container(
-              width: 16,
-              height: 16,
-              decoration: const BoxDecoration(
-                color: Color(0xFFFFA65C),
-                shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: (_surfaceDetected ? const Color(0xFF00E5D0) : const Color(0xFFFFA65C)).withValues(alpha: 0.3),
+                  blurRadius: 16,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Center(
+              child: Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: _surfaceDetected ? const Color(0xFF00E5D0) : const Color(0xFFFFA65C),
+                  shape: BoxShape.circle,
+                ),
               ),
             ),
           ),
@@ -795,82 +787,145 @@ class _ARViewScreenState extends State<ARViewScreen>
       );
     }
 
-    final cardW = 180.0 * _scale;
-    final cardH = 220.0 * _scale;
+    final viewportW = (280.0 * _scale).clamp(160.0, size.width * 0.95);
+    final viewportH = (340.0 * _scale).clamp(200.0, size.height * 0.70);
 
     // Position calculations with ground parallax anchoring
     final effectiveX = (_petPosition.dx + (_isGroundAnchored ? _gyroParallax.dx : 0.0)).clamp(0.05, 0.95);
     final effectiveY = (_petPosition.dy + (_isGroundAnchored ? _gyroParallax.dy : 0.0)).clamp(0.15, 0.90);
 
     // Mathematically centered horizontally on screen
-    final petX = (effectiveX * size.width) - (cardW / 2);
-    final petY = (effectiveY * size.height) - (cardH / 2);
+    final petX = (effectiveX * size.width) - (viewportW / 2);
+    final petY = (effectiveY * size.height) - (viewportH / 2);
 
-    final maxLeft = math.max(0.0, size.width - cardW);
+    final maxLeft = math.max(0.0, size.width - viewportW);
     final leftPos = petX.clamp(0.0, maxLeft).toDouble();
-    final maxTop = math.max(60.0, size.height - cardH - 120.0);
+    final maxTop = math.max(60.0, size.height - viewportH - 120.0);
     final topPos = petY.clamp(60.0, math.max(60.0, maxTop)).toDouble();
 
     return Positioned(
       left: leftPos,
       top: topPos,
-      child: GestureDetector(
-        onScaleStart: (details) {
-          _baseScale = _scale;
-        },
-        onScaleUpdate: (details) {
-          setState(() {
-            // Scale
-            _scale = (_baseScale * details.scale).clamp(0.5, 2.2);
+      width: viewportW,
+      height: viewportH,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Metric Life-Scale Ruler Tag or Speech Bubble
+          if (_showSpeechBubble)
+            _buildSpeechBubble()
+          else if (_isLifeScaleLocked)
+            _buildMetricRulerTag(),
 
-            // Drag / Pan position
-            final newDx = _petPosition.dx + (details.focalPointDelta.dx / size.width);
-            final newDy = _petPosition.dy + (details.focalPointDelta.dy / size.height);
-            _petPosition = Offset(newDx.clamp(0.1, 0.9), newDy.clamp(0.2, 0.85));
-          });
-        },
-        child: AnimatedBuilder(
-          animation: _wagAnimation,
-          builder: (context, child) {
-            // Dynamic action transforms
-            double rotation = 0.0;
-            double verticalOffset = 0.0;
-
-            if (_currentAction == 'Wag Tail') {
-              rotation = _wagAnimation.value;
-            } else if (_currentAction == 'Sit') {
-              verticalOffset = 22.0 * _scale; // Sit closer to the contact shadow
-            }
-
-            return Transform.translate(
-              offset: Offset(0, verticalOffset),
-              child: Transform.rotate(
-                angle: rotation,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Speech bubble when speaking
-                    if (_showSpeechBubble) _buildSpeechBubble(),
-
-                    // Pet Avatar with rounded spatial card
-                    _buildPetAvatar(),
-
-                    const SizedBox(height: 6),
-
-                    // Realistic Perspective Contact Shadow
-                    _buildFloorContactShadow(),
-                  ],
+          // The 3D Model Viewer directly over the camera with transparent WebGL
+          Expanded(
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Ground Contact Shadow on the Floor
+                Positioned(
+                  bottom: 14 * _scale,
+                  child: _buildFloorContactShadow(),
                 ),
-              ),
-            );
-          },
-        ),
+
+                // Rigged 3D GLB Model
+                ModelViewer(
+                  key: ValueKey('${_modelGlbUrl}_ar_$_currentAction'),
+                  src: _modelGlbUrl,
+                  alt: '3D model of $_petName',
+                  ar: false,
+                  autoRotate: false,
+                  cameraControls: true,
+                  autoPlay: true,
+                  animationName: _currentAction == 'Sit' ? 'sit' : 'idle',
+                  backgroundColor: Colors.transparent,
+                  shadowIntensity: 0.85,
+                  shadowSoftness: 0.9,
+                  cameraOrbit: '0deg 75deg 105%',
+                ),
+
+                // Floating Drag Handle
+                Positioned(
+                  bottom: 0,
+                  child: GestureDetector(
+                    onPanUpdate: (details) {
+                      setState(() {
+                        final newDx = _petPosition.dx + (details.delta.dx / size.width);
+                        final newDy = _petPosition.dy + (details.delta.dy / size.height);
+                        _petPosition = Offset(newDx.clamp(0.1, 0.9), newDy.clamp(0.2, 0.85));
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white24, width: 0.8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.open_with, color: Colors.white, size: 11),
+                          SizedBox(width: 4),
+                          Text(
+                            'Drag to Move',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricRulerTag() {
+    final heightCm = _realLifeHeightCm.toStringAsFixed(0);
+    final heightIn = (_realLifeHeightCm / 2.54).toStringAsFixed(1);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF008F82),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.straighten, color: Colors.white, size: 12),
+          const SizedBox(width: 5),
+          Text(
+            'Height: $heightCm cm ($heightIn in) • 1:1 Life Scale',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10.5,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildSpeechBubble() {
-    final sound = _petType == 'cat' ? 'Meow! Purrr... 🐾' : 'Woof! Woof! 🐾';
+    final sound = _petType == 'cat' ? 'Meow! Purrr...' : 'Woof! Woof!';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -897,141 +952,9 @@ class _ARViewScreenState extends State<ARViewScreen>
     );
   }
 
-  Widget _buildPetAvatar() {
-    final cardWidth = 180.0 * _scale;
-    final cardHeight = 190.0 * _scale;
-
-    return Container(
-      width: cardWidth,
-      height: cardHeight,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24 * _scale),
-        border: Border.all(
-          color: Colors.white,
-          width: 3.5 * _scale,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.30),
-            blurRadius: 16 * _scale,
-            offset: Offset(0, 6 * _scale),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(21 * _scale),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Image from Supabase or fallback
-            if (_petImageUrl.isNotEmpty)
-              Image.network(
-                _petImageUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => _buildFallbackPetGraphic(),
-              )
-            else
-              _buildFallbackPetGraphic(),
-
-            // Subtle gradient scrim
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.1),
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.55),
-                  ],
-                ),
-              ),
-            ),
-
-            // Live Pet Badge
-            Positioned(
-              bottom: 8 * _scale,
-              left: 8 * _scale,
-              right: 8 * _scale,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _petName,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 14 * _scale,
-                            fontWeight: FontWeight.bold,
-                            shadows: const [
-                              Shadow(
-                                color: Colors.black54,
-                                blurRadius: 4,
-                              ),
-                            ],
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          _petBreed,
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 10 * _scale,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 6 * _scale,
-                      vertical: 2 * _scale,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF078F80),
-                      borderRadius: BorderRadius.circular(10 * _scale),
-                    ),
-                    child: Text(
-                      _petSize,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 9 * _scale,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFallbackPetGraphic() {
-    return Container(
-      color: const Color(0xFF795548),
-      child: Center(
-        child: Icon(
-          _petType == 'cat' ? Icons.pets : Icons.pets,
-          color: Colors.white,
-          size: 54 * _scale,
-        ),
-      ),
-    );
-  }
-
   Widget _buildFloorContactShadow() {
-    final shadowWidth = 140.0 * _scale;
-    final shadowHeight = 22.0 * _scale;
+    final shadowWidth = (140.0 * _scale).clamp(80.0, 300.0);
+    final shadowHeight = (22.0 * _scale).clamp(12.0, 50.0);
 
     return Container(
       width: shadowWidth,
@@ -1051,7 +974,7 @@ class _ARViewScreenState extends State<ARViewScreen>
   }
 
   // ============================================================
-  // TOP BAR (BACK, TITLE PILL, HELP)
+  // TOP BAR (BACK, TITLE PILL, OPTIONS)
   // ============================================================
 
   Widget _buildTopHeaderBar() {
@@ -1102,10 +1025,10 @@ class _ARViewScreenState extends State<ARViewScreen>
           ),
         ),
 
-        // Floor AR button (AR Projection Options)
+        // Options button
         _roundButton(
-          icon: Icons.view_in_ar,
-          tooltip: 'AR Floor Options',
+          icon: Icons.tune,
+          tooltip: 'AR Options',
           backgroundColor: const Color(0xFF008F82),
           iconColor: Colors.white,
           onTap: _showArProjectionOptionsDialog,
@@ -1158,7 +1081,7 @@ class _ARViewScreenState extends State<ARViewScreen>
 
   Widget _buildSurfaceStatusBanner() {
     final statusText = _is3DStudioMode
-        ? '3D Interactive Studio • 360° View & Rigged Animations'
+        ? '3D Interactive Studio • 360° Inspection & Rigged Animations'
         : _surfaceStatus;
     final isDetected = _is3DStudioMode ? true : _surfaceDetected;
 
@@ -1212,7 +1135,7 @@ class _ARViewScreenState extends State<ARViewScreen>
                   _gyroParallax = Offset.zero;
                 });
                 _showMessage(_isGroundAnchored
-                    ? 'Floor surface locked! Pet stays fixed on ground.'
+                    ? 'Floor surface locked. Pet stays fixed on ground.'
                     : 'Floor lock off (free-floating).');
               },
               child: Container(
@@ -1231,33 +1154,6 @@ class _ARViewScreenState extends State<ARViewScreen>
                 ),
               ),
             ),
-          ] else if (_is3DStudioMode) ...[
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: _launchGoogleSceneViewer,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF008F82),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.view_in_ar, size: 11, color: Colors.white),
-                    SizedBox(width: 3),
-                    Text(
-                      'FLOOR AR',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           ],
         ],
       ),
@@ -1265,25 +1161,118 @@ class _ARViewScreenState extends State<ARViewScreen>
   }
 
   // ============================================================
-  // RIGHT SIDE CONTROLS (RESET, SCALE SLIDER)
+  // DISTANCE SELECTOR FOR 1:1 METRIC SCALE CALIBRATION
+  // ============================================================
+
+  Widget _buildDistanceSelector() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.70),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white24, width: 0.8),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.straighten, size: 13, color: Color(0xFF00E5D0)),
+              SizedBox(width: 6),
+              Text(
+                'Distance:',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _distanceChip(1.0, '1.0m Close'),
+              const SizedBox(width: 4),
+              _distanceChip(1.5, '1.5m Floor'),
+              const SizedBox(width: 4),
+              _distanceChip(2.0, '2.0m Room'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _distanceChip(double dist, String label) {
+    final isSelected = (_viewingDistanceMeters - dist).abs() < 0.1;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _viewingDistanceMeters = dist;
+          _isLifeScaleLocked = true;
+          _scale = _calculateLifeScale(dist);
+        });
+        _showMessage('Set to $label: $_petName is calibrated at ${_realLifeHeightCm.toStringAsFixed(0)} cm life-scale.');
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF008F82) : Colors.white12,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.white70,
+            fontSize: 9.5,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // RIGHT SIDE CONTROLS (1:1 SCALE LOCK, RESET, ZOOM, PHOTO)
   // ============================================================
 
   Future<void> _takeSnapshot() async {
     if (_cameraController != null && _cameraController!.value.isInitialized) {
       try {
         await _cameraController!.takePicture();
-        _showMessage('AR Photo captured! 📸 $_petName placed in your room.');
+        _showMessage('AR Photo captured. $_petName placed in your room.');
       } catch (e) {
-        _showMessage('Snapshot captured! 📸 $_petName in room.');
+        _showMessage('Snapshot captured. $_petName in room.');
       }
     } else {
-      _showMessage('Snapshot captured! 📸 $_petName in room.');
+      _showMessage('Snapshot captured. $_petName in room.');
     }
   }
 
   Widget _buildRightControls() {
     return Column(
       children: [
+        // 1:1 Life Size Mode Button
+        _roundButton(
+          icon: Icons.straighten,
+          tooltip: _isLifeScaleLocked ? '1:1 Life Size: LOCKED' : '1:1 Life Size: OFF',
+          backgroundColor: _isLifeScaleLocked ? const Color(0xFF008F82) : Colors.white,
+          iconColor: _isLifeScaleLocked ? Colors.white : darkBrown,
+          onTap: () {
+            setState(() {
+              _isLifeScaleLocked = !_isLifeScaleLocked;
+              if (_isLifeScaleLocked) {
+                _scale = _calculateLifeScale(_viewingDistanceMeters);
+              }
+            });
+            _showMessage(_isLifeScaleLocked
+                ? '1:1 Life Size locked: ${_realLifeHeightCm.toStringAsFixed(0)} cm true scale.'
+                : 'Manual scaling enabled.');
+          },
+        ),
+        const SizedBox(height: 10),
         _roundButton(
           icon: _isGroundAnchored ? Icons.anchor : Icons.anchor_outlined,
           tooltip: _isGroundAnchored ? 'Floor Anchor: ON' : 'Floor Anchor: OFF',
@@ -1295,7 +1284,7 @@ class _ARViewScreenState extends State<ARViewScreen>
               _gyroParallax = Offset.zero;
             });
             _showMessage(_isGroundAnchored
-                ? 'Floor surface lock enabled! 🐾'
+                ? 'Floor surface lock enabled.'
                 : 'Free-floating mode enabled.');
           },
         ),
@@ -1311,9 +1300,10 @@ class _ARViewScreenState extends State<ARViewScreen>
           tooltip: 'Enlarge Pet',
           onTap: () {
             setState(() {
-              _scale = (_scale + 0.15).clamp(0.5, 2.2);
+              _isLifeScaleLocked = false;
+              _scale = (_scale + 0.15).clamp(0.4, 2.5);
             });
-            _showMessage('Scale: ${(_scale * 100).toInt()}%');
+            _showMessage('Scale: ${(_scale * 100).toInt()}% (Custom)');
           },
         ),
         const SizedBox(height: 10),
@@ -1322,9 +1312,10 @@ class _ARViewScreenState extends State<ARViewScreen>
           tooltip: 'Shrink Pet',
           onTap: () {
             setState(() {
-              _scale = (_scale - 0.15).clamp(0.5, 2.2);
+              _isLifeScaleLocked = false;
+              _scale = (_scale - 0.15).clamp(0.4, 2.5);
             });
-            _showMessage('Scale: ${(_scale * 100).toInt()}%');
+            _showMessage('Scale: ${(_scale * 100).toInt()}% (Custom)');
           },
         ),
         const SizedBox(height: 10),
@@ -1427,6 +1418,7 @@ class _ARViewScreenState extends State<ARViewScreen>
   // ============================================================
 
   Widget _buildPetInfoCard() {
+    final heightText = '${_realLifeHeightCm.toStringAsFixed(0)} cm';
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -1471,7 +1463,7 @@ class _ARViewScreenState extends State<ARViewScreen>
                   ),
                 ),
                 Text(
-                  '$_petBreed • $_petSize size',
+                  '$_petBreed • $_petSize ($heightText height)',
                   style: const TextStyle(
                     color: Color(0xFF6A7982),
                     fontSize: 12,
@@ -1530,10 +1522,16 @@ class _ARViewScreenState extends State<ARViewScreen>
     if (_is3DStudioMode) {
       return Center(
         child: ElevatedButton.icon(
-          onPressed: _showArProjectionOptionsDialog,
+          onPressed: () {
+            setState(() {
+              _is3DStudioMode = false;
+              _isPetPlaced = true;
+            });
+            _showMessage('Switched to Camera AR. $_petName is placed on your floor.');
+          },
           icon: const Icon(Icons.view_in_ar, color: Colors.white, size: 20),
           label: const Text(
-            'Project on Real Floor (AR Mode)',
+            'Project on Real Floor (Camera AR)',
             style: TextStyle(
               color: Colors.white,
               fontSize: 13.5,
@@ -1656,21 +1654,19 @@ class _ARViewScreenState extends State<ARViewScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHelpRow(Icons.touch_app, 'Tap the shutter button or surface to place $_petName.'),
+              _buildHelpRow(Icons.touch_app, 'Tap anywhere on your floor to position $_petName instantly.'),
               const SizedBox(height: 10),
-              _buildHelpRow(Icons.pan_tool, 'Touch and drag to move $_petName around your space.'),
+              _buildHelpRow(Icons.open_with, 'Use the "Drag to Move" handle beneath the pet to slide across the room.'),
               const SizedBox(height: 10),
-              _buildHelpRow(Icons.pinch, 'Pinch with 2 fingers or use the right zoom buttons to scale size.'),
+              _buildHelpRow(Icons.straighten, 'Tap 1:1 Life Size on the right to lock accurate physical dimensions (cm/inches).'),
               const SizedBox(height: 10),
-              _buildHelpRow(Icons.view_in_ar_rounded, 'Switch to "3D Studio" at top for full 360° orbiting and rigged animations.'),
-              const SizedBox(height: 10),
-              _buildHelpRow(Icons.view_in_ar, 'Tap "AR Floor Options" to choose between Universal Camera AR (all phones) or Google Scene Viewer.'),
+              _buildHelpRow(Icons.pin_drop, 'Select distance (1.0m, 1.5m, 2.0m) to calibrate perspective depth.'),
               const SizedBox(height: 10),
               _buildHelpRow(Icons.camera_alt, 'Tap the camera button on the right to capture an AR photo of $_petName in your room.'),
               const SizedBox(height: 10),
-              _buildHelpRow(Icons.pets, 'Tap Sit, Wag Tail, or Speak to trigger real-time pet reactions.'),
+              _buildHelpRow(Icons.pets, 'Tap Sit, Wag Tail, or Speak to trigger real-time reactions.'),
               const SizedBox(height: 10),
-              _buildHelpRow(Icons.refresh, 'Tap Reset to return $_petName to the center.'),
+              _buildHelpRow(Icons.refresh, 'Tap Reset to return $_petName to the center with 1:1 life-scale.'),
             ],
           ),
           actions: [
